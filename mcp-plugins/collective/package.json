@@ -1,0 +1,7 @@
+{
+  "name": "collective-mcp-server",
+  "version": "1.0.0",
+  "description": "Zero-dependency MCP server wrapping The Collective retrieval gateway (POST /api/search).",
+  "private": true,
+  "bin": { "collective-mcp": "server.js" }
+}

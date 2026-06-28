@@ -1,0 +1,25 @@
+{
+  "$schema": "https://code.claude.com/schemas/plugin-schema.json",
+  "name": "collective",
+  "displayName": "The Collective",
+  "version": "1.0.0",
+  "description": "Read-only MCP access to The Collective retrieval gateway — search Alice (Glowming brand + ops knowledge) and ask the personas (Iris / Zac / Heyu / Alice). Scope is enforced gateway-side by the token. Internal — Riven OSS only.",
+  "author": "Riven OSS",
+  "keywords": ["glowming", "collective", "alice", "personas", "retrieval", "riven"],
+  "userConfig": {
+    "gateway_token": {
+      "type": "string",
+      "title": "Collective gateway token",
+      "description": "A gateway token from Secret Manager (project glowming-business). Use COLLECTIVE_EXEC_TOKEN for execs (Glowming knowledge only) or COLLECTIVE_GATEWAY_TOKEN for full access.",
+      "sensitive": true
+    },
+    "gateway_url": {
+      "type": "string",
+      "title": "Collective gateway URL",
+      "description": "The retrieval gateway base URL. Leave as default unless pointing at a local dev instance.",
+      "default": "https://chat.glowming.business",
+      "sensitive": false
+    }
+  },
+  "mcpServers": ".mcp.json"
+}

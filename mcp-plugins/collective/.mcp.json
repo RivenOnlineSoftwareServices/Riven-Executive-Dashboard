@@ -1,0 +1,13 @@
+{
+  "mcpServers": {
+    "collective": {
+      "type": "stdio",
+      "command": "node",
+      "args": ["${CLAUDE_PLUGIN_ROOT}/server.js"],
+      "env": {
+        "COLLECTIVE_GATEWAY_TOKEN": "${PLUGIN_CONFIG_gateway_token}",
+        "COLLECTIVE_GATEWAY_URL": "${PLUGIN_CONFIG_gateway_url}"
+      }
+    }
+  }
+}
