@@ -25,6 +25,9 @@ const SERVER_VERSION = '1.0.0';
 // cached body for repeated calls within the window. Keyed by request path.
 // Only ok:true responses are cached (errors are never cached). Zero-dependency.
 const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
+// Hard cap so a long-lived MCP process can't grow unbounded — mart.limit varies
+// 1..10000, so distinct paths (and thus keys) are effectively unbounded.
+const CACHE_MAX = 256;
 const responseCache = new Map(); // path -> { expires: <ms epoch>, result: <pulseGet return> }
 
 // The 9 canonical marts (lower_snake_case, as the route expects).
@@ -104,8 +107,21 @@ async function pulseGet(path) {
   const now = Date.now();
   const hit = responseCache.get(path);
   if (hit && hit.expires > now) return hit.result;
+  if (hit) responseCache.delete(path); // expired — drop it
   const result = await pulseFetch(path);
-  if (result.ok) responseCache.set(path, { expires: now + CACHE_TTL_MS, result: result });
+  if (result.ok) {
+    // Bound the cache: sweep expired entries under pressure, then evict
+    // oldest-first (Map preserves insertion order) until under the cap.
+    if (responseCache.size >= CACHE_MAX) {
+      for (const [k, v] of responseCache) if (v.expires <= now) responseCache.delete(k);
+      while (responseCache.size >= CACHE_MAX) {
+        const oldest = responseCache.keys().next().value;
+        if (oldest === undefined) break;
+        responseCache.delete(oldest);
+      }
+    }
+    responseCache.set(path, { expires: now + CACHE_TTL_MS, result: result });
+  }
   return result;
 }
 
