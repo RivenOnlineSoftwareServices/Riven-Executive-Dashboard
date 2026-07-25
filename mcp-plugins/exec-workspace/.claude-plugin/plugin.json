@@ -3,7 +3,7 @@
   "name": "exec-workspace",
   "displayName": "Riven Exec Workspace",
   "version": "1.0.0",
-  "description": "Guided, question-and-answer assistants for a Riven executive's Claude workspace. Includes exec-setup (install Pulse + Collective on your Claude), exec-guide (learn how to use the tools + the start/end-session habit), and exec-optimize (tune your Claude Code toward the proven Riven setup — inefficiencies, skills/MCP, and a security sweep — without removing your work). Skills-only; no MCP server, no token needed.",
+  "description": "Guided, question-and-answer assistants for a Riven executive's Claude workspace. Includes exec-setup (install Pulse + Collective on your Claude), exec-guide (learn how to use the tools + the start/end-session habit), exec-optimize (tune your Claude Code toward the proven Riven setup — inefficiencies, skills/MCP, and a security sweep — without removing your work), and exec-remind (drop a dated reminder on your own Microsoft To Do). Skills-only; no MCP server, no token needed.",
   "author": { "name": "Riven OSS", "email": "riaan@riven.co.za" },
   "keywords": ["glowming", "riven", "onboarding", "setup", "optimize", "cleanup", "security", "executive"]
 }
