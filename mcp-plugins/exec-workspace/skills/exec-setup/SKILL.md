@@ -73,11 +73,8 @@ apply.
 - **A plugin installs but a tool errors when you use it** — that is the token
   case (Step 3).
 
-If `pulse` fails while `collective` and `exec-workspace` install fine, that is a
-useful clue rather than a diagnosis: those two come from the public marketplace
-repository and are not affected by private-repo access. But two-of-three can also
-just mean a step was skipped or a different error was hit — so still read the
-error text rather than concluding from the count.
+If only some plugins installed, that usually just means a step was skipped —
+have them install the missing one rather than starting over.
 
 ## Step 3 — tokens (ask what they already have)
 

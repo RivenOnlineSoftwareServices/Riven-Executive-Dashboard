@@ -11,10 +11,10 @@ installs survive a Claude Desktop restart (unlike local-folder installs).
 
 Both are zero-dependency Node stdio MCP servers (Node 18+ for global `fetch`).
 
-The `pulse` plugin was **moved out of this repo** (2026-07-25) to live next to the
-`/v1/*` API it wraps, so a mart/route change updates the wrapper in the same PR.
-This marketplace still references it by `git-subdir`, so execs add ONE marketplace
-(`riven-exec`) and get both plugins.
+Every plugin here is a **local `./mcp-plugins/*` source**, and must stay that way:
+an entry the installer's client cannot read fails validation, and that failure
+takes down the whole marketplace sync rather than the single entry. Executives add
+ONE marketplace (`riven-exec`) and get all three plugins.
 
 ## Install in Cowork
 
