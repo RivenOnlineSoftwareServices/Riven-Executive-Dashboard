@@ -73,7 +73,20 @@ different failures and they need opposite fixes:
   the thing doing the download is not signed in at all. Those are two different
   sign-ins and only one of them matters here.
 
-  Have them run this and tell you *exactly* what comes back:
+  **First: are they in a terminal?**
+
+  - **Setting up via Claude Code (terminal)** → they already have one. Run the
+    test below.
+  - **Setting up via Cowork or Claude Desktop** → they may never have opened a
+    terminal, and it is not reasonable to spring one on them mid-install. Ask:
+    *"Are you comfortable opening a terminal for one command, or would you rather
+    I hand this to Riaan?"* Both answers are fine — say so. If yes, it is
+    **Terminal** on a Mac and **PowerShell** on Windows (Start menu, type the
+    name). If no, have them send Riaan the exact error text from the failed
+    install and stop here. Do not make an executive feel they must use a terminal
+    to finish a setup they started in an app.
+
+  **The test** — run it and report *exactly* what comes back:
 
   ```
   git ls-remote https://github.com/RivenOnlineSoftwareServices/Glowming-Pulse
@@ -82,21 +95,24 @@ different failures and they need opposite fixes:
   - **A long list of letters-and-numbers lines** → the download works, so the
     original failure was something else. Go back and re-read that error.
   - **A sign-in window opens, or it asks for a username and password** → not
-    signed in on this machine. Have them complete that sign-in (on Windows and
-    Mac a GitHub sign-in page opens in the browser; approve it there), then
-    retry the install. They can do this themselves.
-  - **"Repository not found", or it fails immediately without asking for
-    anything** → their GitHub account has not been given access. **This one goes
-    to Riaan.** GitHub deliberately says "not found" rather than "no access" for
-    private repositories, so this is the same message someone would see if the
-    repo did not exist — it is not a mistake on their part.
+    signed in on this machine. Have them complete that sign-in (a GitHub page
+    opens in the browser on both Windows and Mac; approve it there), then retry
+    the install. They can do this themselves.
+  - **It says `Repository not found`** → their GitHub account has not been given
+    access. **This one goes to Riaan.** GitHub deliberately says "not found"
+    rather than "no access" for private repositories, so this is the same message
+    someone would see if the repo did not exist — it is not a mistake on their
+    part, and they have not mistyped anything.
+  - **Anything else** — cannot reach the server, a proxy or certificate
+    complaint, a timeout, `git` not recognised as a command → **not an access
+    problem**, so do not route it as one. This is their machine's connection,
+    corporate network, or a missing `git`. Send Riaan the exact text; guessing
+    from here wastes everyone's time.
 
   Note the asymmetry deliberately: a sign-in they can fix in two minutes, an
   access grant only Riaan can. Guessing wrong in either direction wastes
-  somebody's afternoon.
-
-  If `git` is not installed on their machine at all, that is its own answer —
-  route to Riaan, because the terminal install path needs it.
+  somebody's afternoon — which is why the fourth branch exists rather than
+  sweeping every remaining failure into "no access".
 
 - **A plugin installs but a tool errors when you use it** — that is the token
   case (Step 3).
