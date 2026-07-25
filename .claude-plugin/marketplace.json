@@ -21,6 +21,11 @@
       "name": "collective",
       "source": "./mcp-plugins/collective",
       "description": "Read-only MCP access to The Collective retrieval gateway — search Alice + ask the personas — plus the ask-collective skill."
+    },
+    {
+      "name": "exec-workspace",
+      "source": "./mcp-plugins/exec-workspace",
+      "description": "Guided Q&A assistants for a Riven exec's Claude workspace: exec-setup (install Pulse + Collective) + exec-optimize (tune efficiency, skills/MCP, and run a security sweep — without removing your work). No MCP, no token."
     }
   ]
 }
