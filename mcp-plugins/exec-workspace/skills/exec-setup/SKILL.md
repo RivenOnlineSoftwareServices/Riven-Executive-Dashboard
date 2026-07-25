@@ -1,12 +1,12 @@
 ---
 name: exec-setup
 description: >-
-  Guided Q&A install assistant for the Riven executive tools (Pulse + Collective).
-  Use when a Riven executive says "help me set up the Riven exec tools", "install
-  Pulse / Collective on my Claude", "set up the exec plugins", "configure my
-  Pulse/Collective tokens", or "get me started with the Glowming exec tools".
-  Walk them through it one question at a time, tailored to their setup — never
-  assume their environment.
+  Guided Q&A install assistant for the Riven executive tools — all three plugins
+  (Pulse, Collective and Exec Workspace). Use when a Riven executive says "help me
+  set up the Riven exec tools", "install Pulse / Collective on my Claude", "set up
+  the exec plugins", "configure my Pulse/Collective tokens", or "get me started
+  with the Glowming exec tools". Walk them through it one question at a time,
+  tailored to their setup — never assume their environment.
 ---
 
 # Riven Exec Setup — guided install
@@ -35,22 +35,93 @@ Claude Desktop app?"* Then follow the matching path.
 **Cowork / Claude Desktop (in-app):**
 1. Open the plugin marketplace settings (or type `/plugin marketplace add`).
 2. Add the marketplace by repository: `RivenOnlineSoftwareServices/Riven-Executive-Dashboard`
-3. Install the **pulse** and **collective** plugins.
+3. Install the **pulse**, **collective** and **exec-workspace** plugins.
 4. Configure tokens (Step 3), then reload the app.
+
+> **If they ask why they are installing `exec-workspace` when this guide already
+> came from it:** because right now it is running from a temporary or borrowed
+> copy. Installing it puts it in *their* Claude permanently, so `exec-guide`,
+> `exec-optimize` and `exec-remind` are there next week without anyone setting it
+> up again. Worth saying before they ask — it looks redundant otherwise.
 
 **Claude Code (terminal):**
 ```
 claude plugin marketplace add RivenOnlineSoftwareServices/Riven-Executive-Dashboard
 claude plugin install pulse@riven-exec
 claude plugin install collective@riven-exec
+claude plugin install exec-workspace@riven-exec
 ```
 Then configure tokens (Step 3) and start a new session.
 
 ## Step 2 — confirm it installed
 
-Have them check the two plugins appear (in-app: the plugins list; terminal:
-`claude plugin list`). If an install failed, read the error with them — most
-issues are a missing token config, not a broken install.
+Have them check all three plugins appear (in-app: the plugins list; terminal:
+`claude plugin list`). If an install failed, read the error with them.
+
+**Read the actual error before assuming it is a token.** There are two very
+different failures and they need opposite fixes:
+
+- **`pulse` fails while downloading**, with a message about not being able to
+  read a repository, or a prompt for a GitHub username and password. This is not
+  a token problem and changing tokens will not fix it. Pulse is downloaded from a
+  **private** GitHub repository, so it needs two separate things: their GitHub
+  account must have been given access to it, **and** their laptop must be signed
+  in to GitHub.
+
+  **Do not ask them whether they are signed in — test it.** Asking is unreliable:
+  someone whose browser is logged into GitHub will honestly answer "yes" while
+  the thing doing the download is not signed in at all. Those are two different
+  sign-ins and only one of them matters here.
+
+  **First: are they in a terminal?**
+
+  - **Setting up via Claude Code (terminal)** → they already have one. Run the
+    test below.
+  - **Setting up via Cowork or Claude Desktop** → they may never have opened a
+    terminal, and it is not reasonable to spring one on them mid-install. Ask:
+    *"Are you comfortable opening a terminal for one command, or would you rather
+    I hand this to Riaan?"* Both answers are fine — say so. If yes, it is
+    **Terminal** on a Mac and **PowerShell** on Windows (Start menu, type the
+    name). If no, have them send Riaan the exact error text from the failed
+    install and stop here. Do not make an executive feel they must use a terminal
+    to finish a setup they started in an app.
+
+  **The test** — run it and report *exactly* what comes back:
+
+  ```
+  git ls-remote https://github.com/RivenOnlineSoftwareServices/Glowming-Pulse
+  ```
+
+  - **A long list of letters-and-numbers lines** → the download works, so the
+    original failure was something else. Go back and re-read that error.
+  - **A sign-in window opens, or it asks for a username and password** → not
+    signed in on this machine. Have them complete that sign-in (a GitHub page
+    opens in the browser on both Windows and Mac; approve it there), then retry
+    the install. They can do this themselves.
+  - **It says `Repository not found`** → their GitHub account has not been given
+    access. **This one goes to Riaan.** GitHub deliberately says "not found"
+    rather than "no access" for private repositories, so this is the same message
+    someone would see if the repo did not exist — it is not a mistake on their
+    part, and they have not mistyped anything.
+  - **Anything else** — cannot reach the server, a proxy or certificate
+    complaint, a timeout, `git` not recognised as a command → **not an access
+    problem**, so do not route it as one. This is their machine's connection,
+    corporate network, or a missing `git`. Send Riaan the exact text; guessing
+    from here wastes everyone's time.
+
+  Note the asymmetry deliberately: a sign-in they can fix in two minutes, an
+  access grant only Riaan can. Guessing wrong in either direction wastes
+  somebody's afternoon — which is why the fourth branch exists rather than
+  sweeping every remaining failure into "no access".
+
+- **A plugin installs but a tool errors when you use it** — that is the token
+  case (Step 3).
+
+If `pulse` fails while `collective` and `exec-workspace` install fine, that is a
+useful clue rather than a diagnosis: those two come from the public marketplace
+repository and are not affected by private-repo access. But two-of-three can also
+just mean a step was skipped or a different error was hit — so still read the
+error text rather than concluding from the count.
 
 ## Step 3 — tokens (ask what they already have)
 
