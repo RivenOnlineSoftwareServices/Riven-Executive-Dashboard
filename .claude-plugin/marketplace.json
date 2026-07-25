@@ -1,18 +1,22 @@
 {
   "$schema": "https://code.claude.com/schemas/marketplace-schema.json",
   "name": "riven-exec",
-  "description": "Riven OSS executive plugins — Pulse analytics + Collective retrieval. Add this repo as a Cowork marketplace by URL so installs survive a restart.",
-  "version": "1.0.0",
+  "description": "Riven OSS executive plugins — Pulse analytics + Collective retrieval. Add this repo as a marketplace by URL so installs survive a restart.",
+  "version": "1.1.0",
   "plugins": [
     {
       "name": "pulse",
-      "source": "./mcp-plugins/pulse",
-      "description": "Read-only MCP access to Glowming Pulse /v1/* (daily snapshot, weekly digest, the nine marts)."
+      "source": {
+        "source": "git-subdir",
+        "url": "https://github.com/RivenOnlineSoftwareServices/Glowming-Pulse",
+        "path": "integrations/pulse-mcp"
+      },
+      "description": "Read-only MCP access to Glowming Pulse /v1/* (daily snapshot, weekly digest, the nine marts) + the pulse-brief exec briefing skill. Authored in the Glowming-Pulse repo, next to the API it wraps."
     },
     {
       "name": "collective",
       "source": "./mcp-plugins/collective",
-      "description": "Read-only MCP access to The Collective retrieval gateway — search Alice + ask the personas."
+      "description": "Read-only MCP access to The Collective retrieval gateway — search Alice + ask the personas — plus the ask-collective skill."
     }
   ]
 }
