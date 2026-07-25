@@ -1,7 +1,0 @@
-{
-  "name": "pulse-mcp-server",
-  "version": "1.0.0",
-  "description": "Zero-dependency MCP server wrapping the Glowming Pulse /v1/* API.",
-  "private": true,
-  "bin": { "pulse-mcp": "server.js" }
-}
