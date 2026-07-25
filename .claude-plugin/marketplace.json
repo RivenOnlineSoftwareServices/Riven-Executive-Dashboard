@@ -25,7 +25,7 @@
     {
       "name": "exec-workspace",
       "source": "./mcp-plugins/exec-workspace",
-      "description": "Guided Q&A assistants for a Riven exec's Claude workspace: exec-setup (install Pulse + Collective), exec-guide (how to actually use them, incl. the start/end-session habit), exec-optimize (tune efficiency, skills/MCP, and run a security sweep — without removing your work) and exec-remind (dated reminders on your own Microsoft To Do). No MCP, no token."
+      "description": "Guided Q&A assistants for a Riven exec's Claude workspace: exec-setup (install all three exec plugins), exec-guide (how to actually use them, incl. the start/end-session habit), exec-optimize (tune efficiency, skills/MCP, and run a security sweep — without removing your work) and exec-remind (dated reminders on your own Microsoft To Do). No MCP, no token."
     }
   ]
 }

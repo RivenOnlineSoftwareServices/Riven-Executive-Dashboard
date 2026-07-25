@@ -1,12 +1,12 @@
 ---
 name: exec-setup
 description: >-
-  Guided Q&A install assistant for the Riven executive tools (Pulse + Collective).
-  Use when a Riven executive says "help me set up the Riven exec tools", "install
-  Pulse / Collective on my Claude", "set up the exec plugins", "configure my
-  Pulse/Collective tokens", or "get me started with the Glowming exec tools".
-  Walk them through it one question at a time, tailored to their setup — never
-  assume their environment.
+  Guided Q&A install assistant for the Riven executive tools — all three plugins
+  (Pulse, Collective and Exec Workspace). Use when a Riven executive says "help me
+  set up the Riven exec tools", "install Pulse / Collective on my Claude", "set up
+  the exec plugins", "configure my Pulse/Collective tokens", or "get me started
+  with the Glowming exec tools". Walk them through it one question at a time,
+  tailored to their setup — never assume their environment.
 ---
 
 # Riven Exec Setup — guided install
@@ -38,6 +38,12 @@ Claude Desktop app?"* Then follow the matching path.
 3. Install the **pulse**, **collective** and **exec-workspace** plugins.
 4. Configure tokens (Step 3), then reload the app.
 
+> **If they ask why they are installing `exec-workspace` when this guide already
+> came from it:** because right now it is running from a temporary or borrowed
+> copy. Installing it puts it in *their* Claude permanently, so `exec-guide`,
+> `exec-optimize` and `exec-remind` are there next week without anyone setting it
+> up again. Worth saying before they ask — it looks redundant otherwise.
+
 **Claude Code (terminal):**
 ```
 claude plugin marketplace add RivenOnlineSoftwareServices/Riven-Executive-Dashboard
@@ -52,19 +58,35 @@ Then configure tokens (Step 3) and start a new session.
 Have them check all three plugins appear (in-app: the plugins list; terminal:
 `claude plugin list`). If an install failed, read the error with them.
 
-**Check the error before assuming it is a token.** There are two very different
-failures and they need opposite fixes:
+**Read the actual error before assuming it is a token.** There are two very
+different failures and they need opposite fixes:
 
-- **`pulse` fails while fetching**, with git asking for a username/password or
-  saying it cannot read a repository. This is NOT a token problem and no amount
-  of token-fiddling will fix it. `pulse` is pulled from the **private**
-  `Glowming-Pulse` repository, so it needs (a) their GitHub account to have
-  access to it, and (b) git credentials configured on that machine. Route it to
-  Riaan — it is an access grant, not something they can resolve locally.
-  `collective` and `exec-workspace` come from the public marketplace repo and
-  are unaffected, so "two of three installed" is the signature of exactly this.
-- **A plugin installs but a tool errors when used** — that is the token case
-  (Step 3).
+- **`pulse` fails while downloading**, with a message about not being able to
+  read a repository, or a prompt for a GitHub username and password. This is not
+  a token problem and changing tokens will not fix it. Pulse is downloaded from a
+  **private** GitHub repository, so it needs two separate things: their GitHub
+  account must have been given access to it, **and** their laptop must be signed
+  in to GitHub.
+
+  Ask them: *"Have you used GitHub on this laptop before — does anything else
+  connect to it?"*
+  - **Never used GitHub here / not signed in** → that is the likely cause, and
+    they can fix it themselves by signing in to GitHub on this machine. Offer to
+    walk them through it.
+  - **Signed in and it still fails** → they have not been granted access to the
+    private repository. Route that to Riaan; it is not fixable on their side.
+
+  Do not assume it is the access grant. It is often the sign-in, and sending them
+  to Riaan for something they could fix in two minutes wastes both their time.
+
+- **A plugin installs but a tool errors when you use it** — that is the token
+  case (Step 3).
+
+If `pulse` fails while `collective` and `exec-workspace` install fine, that is a
+useful clue rather than a diagnosis: those two come from the public marketplace
+repository and are not affected by private-repo access. But two-of-three can also
+just mean a step was skipped or a different error was hit — so still read the
+error text rather than concluding from the count.
 
 ## Step 3 — tokens (ask what they already have)
 
