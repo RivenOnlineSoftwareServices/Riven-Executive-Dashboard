@@ -35,7 +35,7 @@ Claude Desktop app?"* Then follow the matching path.
 **Cowork / Claude Desktop (in-app):**
 1. Open the plugin marketplace settings (or type `/plugin marketplace add`).
 2. Add the marketplace by repository: `RivenOnlineSoftwareServices/Riven-Executive-Dashboard`
-3. Install the **pulse** and **collective** plugins.
+3. Install the **pulse**, **collective** and **exec-workspace** plugins.
 4. Configure tokens (Step 3), then reload the app.
 
 **Claude Code (terminal):**
@@ -43,14 +43,28 @@ Claude Desktop app?"* Then follow the matching path.
 claude plugin marketplace add RivenOnlineSoftwareServices/Riven-Executive-Dashboard
 claude plugin install pulse@riven-exec
 claude plugin install collective@riven-exec
+claude plugin install exec-workspace@riven-exec
 ```
 Then configure tokens (Step 3) and start a new session.
 
 ## Step 2 — confirm it installed
 
-Have them check the two plugins appear (in-app: the plugins list; terminal:
-`claude plugin list`). If an install failed, read the error with them — most
-issues are a missing token config, not a broken install.
+Have them check all three plugins appear (in-app: the plugins list; terminal:
+`claude plugin list`). If an install failed, read the error with them.
+
+**Check the error before assuming it is a token.** There are two very different
+failures and they need opposite fixes:
+
+- **`pulse` fails while fetching**, with git asking for a username/password or
+  saying it cannot read a repository. This is NOT a token problem and no amount
+  of token-fiddling will fix it. `pulse` is pulled from the **private**
+  `Glowming-Pulse` repository, so it needs (a) their GitHub account to have
+  access to it, and (b) git credentials configured on that machine. Route it to
+  Riaan — it is an access grant, not something they can resolve locally.
+  `collective` and `exec-workspace` come from the public marketplace repo and
+  are unaffected, so "two of three installed" is the signature of exactly this.
+- **A plugin installs but a tool errors when used** — that is the token case
+  (Step 3).
 
 ## Step 3 — tokens (ask what they already have)
 
