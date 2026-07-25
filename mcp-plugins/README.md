@@ -21,10 +21,11 @@ ONE marketplace (`riven-exec`) and get all three plugins.
 1. Add this repo as a marketplace by URL:
    `RivenOnlineSoftwareServices/Riven-Executive-Dashboard`
 2. Install **pulse** → set `bearer_token`. Riven OSS issues this token.
-3. Install **collective** → set `gateway_token` (`COLLECTIVE_EXEC_TOKEN` for execs,
-   or `COLLECTIVE_GATEWAY_TOKEN` for full access. Riven OSS issues these.
-   `glowming-business`) and leave `gateway_url` as `https://chat.glowming.business`.
-4. Reload Cowork → `mcp__pulse__*` + `mcp__collective__*` tools attach, and the
+3. Install **collective** → set `gateway_token`. Riven OSS issues this token, and
+   an executive token is scoped to Glowming knowledge only. Leave `gateway_url`
+   at its default.
+4. Install **exec-workspace** — no token needed.
+5. Reload Cowork → `mcp__pulse__*` + `mcp__collective__*` tools attach, and the
    `pulse-brief` + `ask-collective` skills are available.
 
 Tokens are entered at install and are never committed. Ask Riven OSS for yours.
