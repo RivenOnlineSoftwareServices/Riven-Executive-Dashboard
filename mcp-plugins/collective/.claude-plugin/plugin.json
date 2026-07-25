@@ -10,7 +10,7 @@
     "gateway_token": {
       "type": "string",
       "title": "Collective gateway token",
-      "description": "A gateway token from Secret Manager (project glowming-business). Use COLLECTIVE_EXEC_TOKEN for execs (Glowming knowledge only) or COLLECTIVE_GATEWAY_TOKEN for full access.",
+      "description": "Your Collective gateway token, issued by Riven OSS. Exec tokens are scoped to Glowming knowledge only.",
       "sensitive": true
     },
     "gateway_url": {

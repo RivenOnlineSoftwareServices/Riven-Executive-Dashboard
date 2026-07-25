@@ -18,7 +18,7 @@ Mirrors the sibling `pulse-mcp-plugin`: Node built-ins + global `fetch` only, no
 
 | Field | Value |
 |-------|-------|
-| `gateway_token` | A gateway token. Use `COLLECTIVE_EXEC_TOKEN` for exec installs (Louis / Anton / Etienne — Glowming knowledge only) or `COLLECTIVE_GATEWAY_TOKEN` for full access. Pulled from Secret Manager (`glowming-business`). |
+| `gateway_token` | Your Collective gateway token, issued by Riven OSS. Exec tokens are scoped to Glowming knowledge only. |
 | `gateway_url` | `https://chat.glowming.business` |
 
 The token is injected via env (`COLLECTIVE_GATEWAY_TOKEN`) and sent on the

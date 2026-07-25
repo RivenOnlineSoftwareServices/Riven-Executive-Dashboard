@@ -52,7 +52,7 @@ The nine marts: `daily_snapshot`, `checkout_funnel`, `customer_clv`,
 
 ## Reading the data correctly (guards)
 
-- **Monetary/NUMERIC fields arrive as decimal STRINGS** (BRS-Pulse §3.6). Treat
+- **Monetary/NUMERIC fields arrive as decimal STRINGS.** Treat
   them as exact values; do not re-round or coerce through lossy math when
   quoting them.
 - **The most recent day or two can be structurally incomplete** while upstream

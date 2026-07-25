@@ -11,7 +11,7 @@
     {
       "name": "pulse",
       "source": "./mcp-plugins/pulse",
-      "description": "Read-only MCP access to Glowming Pulse /v1/* (daily snapshot, weekly digest, the nine marts) + the pulse-brief exec briefing skill. Authored in the Glowming-Pulse repo, next to the API it wraps."
+      "description": "Read-only MCP access to the Glowming Pulse analytics API (daily snapshot, weekly digest, and the nine data marts), plus the pulse-brief executive briefing skill."
     },
     {
       "name": "collective",
