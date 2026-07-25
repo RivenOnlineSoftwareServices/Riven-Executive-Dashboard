@@ -55,9 +55,9 @@ The nine marts: `daily_snapshot`, `checkout_funnel`, `customer_clv`,
 - **Monetary/NUMERIC fields arrive as decimal STRINGS** (BRS-Pulse §3.6). Treat
   them as exact values; do not re-round or coerce through lossy math when
   quoting them.
-- **The most recent 1–2 days can be structurally incomplete** (GA4 lands ~24h
-  behind; marts rebuild ~05:20 UTC). If the newest row looks like a collapse,
-  check `mart_meta` / `data_through_ts` and call it a reporting lag, not a real
+- **The most recent day or two can be structurally incomplete** while upstream
+  data is still landing. If the newest row looks like a collapse, check
+  `mart_meta` / `data_through_ts` first and call it a reporting lag, not a real
   drop.
 - **Ad spend of 0 / null usually means "no active spend"**, not a broken feed —
   corroborate with `ad_performance.effective_status` before saying ads "stopped".

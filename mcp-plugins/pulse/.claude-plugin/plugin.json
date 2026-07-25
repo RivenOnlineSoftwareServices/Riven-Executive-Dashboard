@@ -3,14 +3,14 @@
   "name": "pulse",
   "displayName": "Glowming Pulse",
   "version": "1.0.0",
-  "description": "Read-only MCP access to the Glowming Pulse /v1/* analytics API (daily snapshot, weekly digest, and the nine BigQuery marts) for the Riven Dashboard 2026. Internal — Riven OSS only.",
+  "description": "Read-only MCP access to the Glowming Pulse /v1/* analytics API (daily snapshot, weekly digest, and the nine data marts) for the Riven Dashboard 2026. Internal — Riven OSS only.",
   "author": { "name": "Riven OSS", "email": "riaan@riven.co.za" },
   "keywords": ["glowming", "pulse", "analytics", "dashboard", "riven"],
   "userConfig": {
     "bearer_token": {
       "type": "string",
       "title": "Pulse API bearer token",
-      "description": "Your Pulse API bearer token. Riven OSS issues this to you — ask Riaan if you do not have one. It is stored by the plugin and never shown to the assistant.",
+      "description": "Your Pulse API bearer token, issued by Riven OSS. Stored by the plugin and never shown to the assistant.",
       "sensitive": true
     },
     "base_url": {
