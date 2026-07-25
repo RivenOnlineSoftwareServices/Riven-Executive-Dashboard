@@ -8,6 +8,7 @@ installs survive a Claude Desktop restart (unlike local-folder installs).
 |--------|------|-------|-------|
 | `pulse` | bundled here (`mcp-plugins/pulse`) | Glowming Pulse analytics API | `snapshot_today` / `digest_this_week` / `mart` / `mart_meta` + the **pulse-brief** skill |
 | `collective` | this repo (`mcp-plugins/collective`) | the retrieval gateway `POST /api/search` | `collective_search` / `ask_persona` + the **ask-collective** skill |
+| `exec-workspace` | this repo (`mcp-plugins/exec-workspace`) | nothing — skills only, no token | **exec-setup** / **exec-guide** / **exec-optimize** / **exec-remind** |
 
 Both are zero-dependency Node stdio MCP servers (Node 18+ for global `fetch`).
 
