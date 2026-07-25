@@ -68,16 +68,35 @@ different failures and they need opposite fixes:
   account must have been given access to it, **and** their laptop must be signed
   in to GitHub.
 
-  Ask them: *"Have you used GitHub on this laptop before — does anything else
-  connect to it?"*
-  - **Never used GitHub here / not signed in** → that is the likely cause, and
-    they can fix it themselves by signing in to GitHub on this machine. Offer to
-    walk them through it.
-  - **Signed in and it still fails** → they have not been granted access to the
-    private repository. Route that to Riaan; it is not fixable on their side.
+  **Do not ask them whether they are signed in — test it.** Asking is unreliable:
+  someone whose browser is logged into GitHub will honestly answer "yes" while
+  the thing doing the download is not signed in at all. Those are two different
+  sign-ins and only one of them matters here.
 
-  Do not assume it is the access grant. It is often the sign-in, and sending them
-  to Riaan for something they could fix in two minutes wastes both their time.
+  Have them run this and tell you *exactly* what comes back:
+
+  ```
+  git ls-remote https://github.com/RivenOnlineSoftwareServices/Glowming-Pulse
+  ```
+
+  - **A long list of letters-and-numbers lines** → the download works, so the
+    original failure was something else. Go back and re-read that error.
+  - **A sign-in window opens, or it asks for a username and password** → not
+    signed in on this machine. Have them complete that sign-in (on Windows and
+    Mac a GitHub sign-in page opens in the browser; approve it there), then
+    retry the install. They can do this themselves.
+  - **"Repository not found", or it fails immediately without asking for
+    anything** → their GitHub account has not been given access. **This one goes
+    to Riaan.** GitHub deliberately says "not found" rather than "no access" for
+    private repositories, so this is the same message someone would see if the
+    repo did not exist — it is not a mistake on their part.
+
+  Note the asymmetry deliberately: a sign-in they can fix in two minutes, an
+  access grant only Riaan can. Guessing wrong in either direction wastes
+  somebody's afternoon.
+
+  If `git` is not installed on their machine at all, that is its own answer —
+  route to Riaan, because the terminal install path needs it.
 
 - **A plugin installs but a tool errors when you use it** — that is the token
   case (Step 3).

@@ -5,7 +5,7 @@
     "name": "Riven OSS",
     "email": "riaan@riven.co.za"
   },
-  "description": "Riven OSS executive plugins — Pulse analytics + Collective retrieval. Add this repo as a marketplace by URL so installs survive a restart.",
+  "description": "Riven OSS executive plugins — Pulse analytics, Collective retrieval, and the Exec Workspace assistants (setup, guide, optimize, reminders). Install all three. Add this repo as a marketplace by URL so installs survive a restart.",
   "version": "1.1.0",
   "plugins": [
     {
