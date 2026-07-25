@@ -8,7 +8,7 @@ by repo URL and get the plugins + guided skills below.
 
 | Plugin | Home | What it gives |
 |--------|------|---------------|
-| `pulse` | authored in **`Glowming-Pulse`** (`integrations/pulse-mcp`), referenced here via `git-subdir` | Pulse MCP tools (`snapshot_today` / `digest_this_week` / `mart` / `mart_meta`) + the **pulse-brief** skill (plain-English business briefing) |
+| `pulse` | bundled here at `mcp-plugins/pulse` | Pulse MCP tools (`snapshot_today` / `digest_this_week` / `mart` / `mart_meta`) + the **pulse-brief** skill (plain-English business briefing) |
 | `collective` | this repo (`mcp-plugins/collective`) | Collective retrieval MCP (`collective_search` / `ask_persona`) + the **ask-collective** skill (consult Heyu / Iris / Zac / Alice) |
 | `exec-workspace` | this repo (`mcp-plugins/exec-workspace`) | Skills-only, no token: **exec-setup** (guided install), **exec-guide** (how to use the tools + the start/end-session habit), **exec-optimize** ("clean up my Claude" — efficiency, skills/MCP, security sweep, without removing their work) |
 
