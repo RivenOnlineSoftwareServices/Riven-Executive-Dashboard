@@ -10,11 +10,7 @@
   "plugins": [
     {
       "name": "pulse",
-      "source": {
-        "source": "git-subdir",
-        "url": "https://github.com/RivenOnlineSoftwareServices/Glowming-Pulse",
-        "path": "integrations/pulse-mcp"
-      },
+      "source": "./mcp-plugins/pulse",
       "description": "Read-only MCP access to Glowming Pulse /v1/* (daily snapshot, weekly digest, the nine marts) + the pulse-brief exec briefing skill. Authored in the Glowming-Pulse repo, next to the API it wraps."
     },
     {
