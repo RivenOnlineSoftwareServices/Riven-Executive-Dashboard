@@ -60,11 +60,13 @@ them?"* Each plugin holds its own token locally.
 - **collective** → `gateway_token` = their scoped **exec** gateway token; leave
   `gateway_url` as `https://chat.glowming.business`. The token reaches Glowming
   knowledge + the personas only — never internal business data.
-- **pulse** → `bearer_token` = the Pulse **dashboard-2026** bearer.
+- **pulse** → `bearer_token` = their Pulse bearer.
 
-If they don't have them: the Business App has an **Exec Tools** page (Riven → Exec
-Tools) that reveals the Collective token to anyone granted it, and a CEO can send
-the Pulse bearer. Do not try to fetch tokens yourself — point them there.
+**Where to get both:** the Business App **Exec Tools** page (Riven → Exec Tools)
+dispenses BOTH tokens to any exec a CEO has granted `exec:token_dispense` — a
+"Reveal my tokens" button shows the Collective gateway token and the Pulse bearer
+to copy. Point them there. If a token shows "not provisioned", a CEO needs to add
+it in the Business App; do not try to fetch tokens yourself.
 
 ## Step 4 — try it
 
