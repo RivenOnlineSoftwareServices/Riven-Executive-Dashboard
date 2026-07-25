@@ -4,7 +4,7 @@
   "displayName": "The Collective",
   "version": "1.0.0",
   "description": "Read-only MCP access to The Collective retrieval gateway — search Alice (Glowming brand + ops knowledge) and ask the personas (Iris / Zac / Heyu / Alice). Scope is enforced gateway-side by the token. Internal — Riven OSS only.",
-  "author": "Riven OSS",
+  "author": { "name": "Riven OSS", "email": "riaan@riven.co.za" },
   "keywords": ["glowming", "collective", "alice", "personas", "retrieval", "riven"],
   "userConfig": {
     "gateway_token": {
@@ -21,5 +21,5 @@
       "sensitive": false
     }
   },
-  "mcpServers": ".mcp.json"
+  "mcpServers": "./.mcp.json"
 }
