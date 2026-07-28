@@ -81,10 +81,49 @@ have them install the missing one rather than starting over.
 Ask: *"Do you already have your two tokens, or should I point you to where to get
 them?"* Each plugin holds its own token locally.
 
-- **collective** → `gateway_token` = their scoped **exec** gateway token; leave
-  `gateway_url` as `https://chat.glowming.business`. The token reaches Glowming
-  knowledge + the personas only — never internal business data.
+- **collective** → `gateway_token` = their scoped **exec** gateway token. The
+  token reaches Glowming knowledge + the personas only — never internal business
+  data.
 - **pulse** → `bearer_token` = their Pulse bearer.
+
+**Only the token needs entering.** Each plugin also exposes `gateway_url` /
+`base_url`, and those must be LEFT BLANK or left at their shown default: the
+plugin declares the production default and the MCP server falls back to the same
+value independently. Telling an exec to fill them in adds two fields, two chances
+to mistype a URL, and the false impression that a missing URL is why a call
+failed. **exec-workspace** takes no configuration at all.
+
+### HOW they enter it — this differs by surface, and getting it wrong wastes their hour
+
+- **Cowork / Claude Desktop:** enabling a plugin that declares config prompts for
+  it — the field's title and help text are shown in a configuration dialog. Paste
+  the token there. **If no dialog appears** for them, do NOT improvise a settings
+  path: the exact in-app behaviour is not documented per-surface and I could not
+  confirm Cowork's specifically, so tell them to stop and send Riaan a screenshot
+  of what they DO see. That is a five-minute answer from him and an hour of
+  guessing otherwise.
+- **Claude Code (terminal):** the value is set **at install time** with
+  `--config`, one flag per value:
+
+  ```
+  claude plugin install pulse@riven-exec --config bearer_token=<their token>
+  claude plugin install collective@riven-exec --config gateway_token=<their token>
+  claude plugin install exec-workspace@riven-exec
+  ```
+
+- ⚠️ **`claude plugin config` DOES NOT EXIST.** It is not a command; it reports an
+  unknown command. If an exec was told to run it, that instruction was wrong —
+  say so plainly and give them the `--config` form above. (An assistant told an
+  exec exactly this on 2026-07-28, alongside a second wrong claim that the
+  plugins' URLs needed "baking in" — they were already defaulted in both the
+  manifest and the server.)
+- **To CHANGE a token later:** re-run the install line for that plugin with the
+  new value, or re-enter it in the in-app dialog. Non-sensitive values live in
+  `~/.claude/settings.json` under `pluginConfigs`; tokens go to the OS keychain,
+  so they are not editable in a text file.
+- **Never put these in a project's `.claude/settings.json`.** `pluginConfigs`
+  entries there are deliberately ignored, so a value placed in a repo silently
+  does nothing.
 
 **Where to get both:** the Business App **Exec Tools** page (Riven → Exec Tools)
 dispenses BOTH tokens to any exec a CEO has granted `exec:token_dispense` — a
@@ -98,9 +137,20 @@ Once configured, suggest a first use so they see it work:
 - *"How's business this week?"* → fires the **pulse-brief** skill.
 - *"Ask Heyu how we should position Pomegranate."* → fires **ask-collective**.
 
-If a call returns an auth error, the token is wrong or unset — re-open the plugin
-config and re-paste it. If it says a service is unavailable, the data may not have
-landed yet (e.g. the weekly digest early in the week) — that is not a setup fault.
+If a call returns an auth error, the token is wrong or unset — re-enter it the way
+their surface allows (in-app dialog, or re-run the `--config` install line). If it
+says a service is unavailable, the data may not have landed yet (e.g. the weekly
+digest early in the week) — that is not a setup fault.
+
+**If the plugin behaves as though it has no token even though one was entered,**
+check the MCP server's stderr for a line reading `arrived as an UNSUBSTITUTED
+placeholder`. That means the plugin runtime did not resolve the config value, and
+it is OUR bug, not theirs — send Riaan the line. Background: until 2026-07-28
+both `.mcp.json` files used `${PLUGIN_CONFIG_<key>}`, which Claude Code does not
+implement (the real syntax is `${user_config.<key>}`), so no token or URL ever
+reached either server on any surface. That is what blocked the first exec through
+this flow. The guard now makes the same class of failure say so out loud instead
+of looking like a bad token.
 
 ## If they get stuck
 

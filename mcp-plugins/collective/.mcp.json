@@ -5,8 +5,8 @@
       "command": "node",
       "args": ["${CLAUDE_PLUGIN_ROOT}/server.js"],
       "env": {
-        "COLLECTIVE_GATEWAY_TOKEN": "${PLUGIN_CONFIG_gateway_token}",
-        "COLLECTIVE_GATEWAY_URL": "${PLUGIN_CONFIG_gateway_url}"
+        "COLLECTIVE_GATEWAY_TOKEN": "${user_config.gateway_token}",
+        "COLLECTIVE_GATEWAY_URL": "${user_config.gateway_url}"
       }
     }
   }

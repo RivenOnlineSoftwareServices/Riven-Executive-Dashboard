@@ -24,8 +24,44 @@
 const readline = require('readline');
 const { createHash } = require('crypto');
 
-const BASE_URL = (process.env.COLLECTIVE_GATEWAY_URL || 'https://chat.glowming.business').replace(/\/+$/, '');
-const TOKEN = process.env.COLLECTIVE_GATEWAY_TOKEN || '';
+/**
+ * Reads a value the plugin runtime was supposed to substitute.
+ *
+ * WHY THIS EXISTS (2026-07-28). `.mcp.json` used `${PLUGIN_CONFIG_<key>}`, which
+ * is NOT a placeholder Claude Code implements — the documented syntax is
+ * `${user_config.<key>}`. Nothing substituted it, so the literal string arrived
+ * in the environment. A plain `process.env.X || fallback` does not catch that,
+ * because a literal placeholder is a NON-EMPTY string and therefore truthy: the
+ * URL fallback was skipped and a garbage token was sent, so an executive saw an
+ * auth failure rather than "not configured". The syntax is fixed; this guard
+ * means a future drift in it fails LOUDLY at startup instead of silently.
+ */
+function configValue(name, key) {
+  const raw = process.env[name];
+  if (!raw) return '';
+  const trimmed = raw.trim();
+  /*
+   * Matched against the two EXACT placeholder spellings this plugin has ever
+   * used, not a general `${...}` shape (Codex review, findings 1 and 2). A broad
+   * pattern would treat a legitimate token that merely happened to be brace-
+   * wrapped as unset, and the value is NEVER logged: one of these fields is a
+   * gateway token, so echoing it to diagnose it would be the worse bug.
+   */
+  const UNRESOLVED = ['${user_config.' + key + '}', '${PLUGIN_CONFIG_' + key + '}'];
+  if (UNRESOLVED.includes(trimmed)) {
+    console.error(
+      '[collective] ' + name + ' arrived as an UNSUBSTITUTED placeholder — the plugin ' +
+      'runtime did not resolve it. Check that .mcp.json uses ${user_config.' + key +
+      '} and that a value is set in the plugin config. Treating it as unset. ' +
+      '(The value itself is deliberately not logged.)',
+    );
+    return '';
+  }
+  return raw;
+}
+
+const BASE_URL = (configValue('COLLECTIVE_GATEWAY_URL', 'gateway_url') || 'https://chat.glowming.business').replace(/\/+$/, '');
+const TOKEN = configValue('COLLECTIVE_GATEWAY_TOKEN', 'gateway_token');
 const SERVER_VERSION = '0.1.0';
 
 // Mirrors the gateway allowlist (src/app/api/search/route.ts). The gateway is the

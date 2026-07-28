@@ -10,8 +10,9 @@
     "gateway_token": {
       "type": "string",
       "title": "Collective gateway token",
-      "description": "Your Collective gateway token, issued by Riven OSS. Exec tokens are scoped to Glowming knowledge only.",
-      "sensitive": true
+      "description": "Your Collective gateway token, from the Business App: Riven > Exec Tools > Your access tokens. Exec tokens are scoped to Glowming knowledge only. This is the ONLY value you need to set.",
+      "sensitive": true,
+      "required": true
     },
     "gateway_url": {
       "type": "string",

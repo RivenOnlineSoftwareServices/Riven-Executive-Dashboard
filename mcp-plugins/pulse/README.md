@@ -13,9 +13,24 @@ Zero-dependency Node stdio MCP server (Node 18+ for global `fetch`).
 
 ## Install
 
-Install the **pulse** plugin from the `riven-exec` marketplace, then set
-`bearer_token`. Riven OSS issues that token. Leave `base_url` at its default
-unless you have been given a different one.
+Install the **pulse** plugin from the `riven-exec` marketplace and set
+`bearer_token` — the only value you need. Riven OSS issues that token.
+
+**`base_url` needs nothing from you.** It defaults to the production Cloud Run
+service in `plugin.json`, and `server.js` falls back to the same URL if the value
+never arrives. Only change it to point at a local dev instance.
+
+**In Cowork / Claude Desktop** enabling the plugin prompts for its configuration —
+paste the token there. (The exact in-app control is not documented per surface; if
+nothing prompts you, ask rather than hunting.) **In Claude Code** the value is set at install
+time:
+
+```
+claude plugin install pulse@riven-exec --config bearer_token=<your token>
+```
+
+There is no `claude plugin config` command. To change the token later, re-run that
+line with the new value.
 
 Reload, and the `mcp__pulse__*` tools attach with the `pulse-brief` skill.
 

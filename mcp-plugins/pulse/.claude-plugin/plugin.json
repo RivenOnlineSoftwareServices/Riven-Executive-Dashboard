@@ -10,8 +10,9 @@
     "bearer_token": {
       "type": "string",
       "title": "Pulse API bearer token",
-      "description": "Your Pulse API bearer token, issued by Riven OSS. Stored by the plugin and never shown to the assistant.",
-      "sensitive": true
+      "description": "Your Pulse API bearer token, from the Business App: Riven > Exec Tools > Your access tokens. Stored by the plugin and never shown to the assistant. This is the ONLY value you need to set.",
+      "sensitive": true,
+      "required": true
     },
     "base_url": {
       "type": "string",

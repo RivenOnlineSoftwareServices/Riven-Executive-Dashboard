@@ -18,8 +18,20 @@ Mirrors the sibling `pulse-mcp-plugin`: Node built-ins + global `fetch` only, no
 
 | Field | Value |
 |-------|-------|
-| `gateway_token` | Your Collective gateway token, issued by Riven OSS. Exec tokens are scoped to Glowming knowledge only. |
-| `gateway_url` | `https://chat.glowming.business` |
+| `gateway_token` | **The only value you need.** Your Collective gateway token, issued by Riven OSS. Exec tokens are scoped to Glowming knowledge only. |
+| `gateway_url` | **Leave alone.** Defaults to `https://chat.glowming.business` in `plugin.json`, and `server.js` falls back to the same URL independently. |
+
+**In Cowork / Claude Desktop** enabling the plugin prompts for its configuration —
+paste the token there. (The exact in-app control is not documented per surface; if
+nothing prompts you, ask rather than hunting.) **In Claude Code** the value is set at install
+time:
+
+```
+claude plugin install collective@riven-exec --config gateway_token=<your token>
+```
+
+There is no `claude plugin config` command. To change the token later, re-run that
+line with the new value.
 
 The token is injected via env (`COLLECTIVE_GATEWAY_TOKEN`) and sent on the
 `X-Collective-Token` header — never logged, never returned to the model.
