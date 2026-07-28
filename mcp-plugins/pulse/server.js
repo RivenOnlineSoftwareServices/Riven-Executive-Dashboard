@@ -16,8 +16,45 @@
 
 const readline = require('readline');
 
-const BASE_URL = (process.env.PULSE_API_BASE_URL || 'https://pulse-api-txrwzaee2q-ew.a.run.app').replace(/\/+$/, '');
-const TOKEN = process.env.PULSE_BEARER_TOKEN || '';
+/**
+ * Reads a value the plugin runtime was supposed to substitute.
+ *
+ * WHY THIS EXISTS (2026-07-28). `.mcp.json` used `${PLUGIN_CONFIG_<key>}`, which
+ * is NOT a placeholder Claude Code implements — the documented syntax is
+ * `${user_config.<key>}`. Nothing substituted it, so the literal string
+ * `"${PLUGIN_CONFIG_bearer_token}"` arrived in the environment. A plain
+ * `process.env.X || fallback` does not catch that, because a literal placeholder
+ * is a NON-EMPTY string and therefore truthy: the URL fallback was skipped and a
+ * garbage bearer was sent, so an executive saw an auth failure rather than
+ * "not configured". The syntax is fixed; this guard means a future drift in it
+ * fails LOUDLY at startup instead of silently for weeks.
+ */
+function configValue(name, key) {
+  const raw = process.env[name];
+  if (!raw) return '';
+  const trimmed = raw.trim();
+  /*
+   * Matched against the two EXACT placeholder spellings this plugin has ever
+   * used, not a general `${...}` shape (Codex review, findings 1 and 2). A broad
+   * pattern would treat a legitimate token that merely happened to be brace-
+   * wrapped as unset, and the value is NEVER logged: one of these fields is a
+   * bearer token, so echoing it to diagnose it would be the worse bug.
+   */
+  const UNRESOLVED = ['${user_config.' + key + '}', '${PLUGIN_CONFIG_' + key + '}'];
+  if (UNRESOLVED.includes(trimmed)) {
+    console.error(
+      '[pulse] ' + name + ' arrived as an UNSUBSTITUTED placeholder — the plugin ' +
+      'runtime did not resolve it. Check that .mcp.json uses ${user_config.' + key +
+      '} and that a value is set in the plugin config. Treating it as unset. ' +
+      '(The value itself is deliberately not logged.)',
+    );
+    return '';
+  }
+  return raw;
+}
+
+const BASE_URL = (configValue('PULSE_API_BASE_URL', 'base_url') || 'https://pulse-api-txrwzaee2q-ew.a.run.app').replace(/\/+$/, '');
+const TOKEN = configValue('PULSE_BEARER_TOKEN', 'bearer_token');
 const SERVER_VERSION = '1.0.0';
 
 // Short-TTL in-memory response cache. The underlying Pulse data changes at most
