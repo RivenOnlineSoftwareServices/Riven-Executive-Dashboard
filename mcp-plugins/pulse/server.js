@@ -104,9 +104,19 @@ function readStoredToken() {
  * token that never worked.
  */
 function writeStoredToken(token) {
-  fs.mkdirSync(CRED_DIR, { recursive: true });
-  fs.writeFileSync(CRED_FILE, JSON.stringify({ bearer_token: token }, null, 2) + '\n', { mode: 0o600 });
-  try { fs.chmodSync(CRED_FILE, 0o600); } catch (e) { /* Windows: not meaningful, not fatal. */ }
+  /*
+   * Directory 0o700 and file 0o600, and the file is written to a temp path then
+   * RENAMED (Codex review, finding 3). Two reasons rename matters: an existing
+   * credential file with broader permissions would otherwise be written into
+   * before the chmod could tighten it, and rename is atomic so a crash mid-write
+   * cannot leave a truncated credential behind.
+   */
+  fs.mkdirSync(CRED_DIR, { recursive: true, mode: 0o700 });
+  try { fs.chmodSync(CRED_DIR, 0o700); } catch (e) { /* Windows: not meaningful, not fatal. */ }
+  const tmp = CRED_FILE + '.tmp';
+  fs.writeFileSync(tmp, JSON.stringify({ bearer_token: token }, null, 2) + '\n', { mode: 0o600 });
+  try { fs.chmodSync(tmp, 0o600); } catch (e) { /* Windows: not meaningful, not fatal. */ }
+  fs.renameSync(tmp, CRED_FILE);
 }
 
 /*
@@ -114,6 +124,25 @@ function writeStoredToken(token) {
  * working immediately rather than being told to restart the app.
  */
 let TOKEN = configValue('PULSE_BEARER_TOKEN', 'bearer_token') || readStoredToken();
+
+/*
+ * Bumped on every successful link. Requests capture it before their fetch and
+ * refuse to populate the cache if it changed while they were in flight (Codex
+ * review, finding 1): the stdio loop handles lines concurrently, so an old-token
+ * request can land AFTER a re-link cleared the cache and would otherwise seed the
+ * new identity with the previous one's rows.
+ */
+let tokenGeneration = 0;
+
+/*
+ * Tracked alongside TOKEN rather than re-derived from the environment. Deriving it
+ * reported "plugin config" forever once an env value existed, even after a link
+ * replaced it mid-session — misleading in exactly the diagnostic this tool exists
+ * to serve (Codex review, non-blocking note).
+ */
+let tokenSourceLabel = configValue('PULSE_BEARER_TOKEN', 'bearer_token')
+  ? 'plugin config (entered at install)'
+  : (TOKEN ? 'stored link (link_account)' : 'none');
 
 // Short-TTL in-memory response cache. The underlying Pulse data changes at most
 // daily, but dashboard tiles re-render and re-call constantly, so we serve a
@@ -240,8 +269,11 @@ async function pulseGet(path) {
   const hit = responseCache.get(path);
   if (hit && hit.expires > now) return hit.result;
   if (hit) responseCache.delete(path); // expired — drop it
+  // Captured BEFORE the await: if a link lands while this request is in flight,
+  // this result belongs to the previous identity and must not be cached.
+  const gen = tokenGeneration;
   const result = await pulseFetch(path);
-  if (result.ok) {
+  if (result.ok && gen === tokenGeneration) {
     // Bound the cache: sweep expired entries under pressure, then evict
     // oldest-first (Map preserves insertion order) until under the cap.
     if (responseCache.size >= CACHE_MAX) {
@@ -262,14 +294,25 @@ function toolError(message) {
 }
 
 /**
- * Probes the live API with a candidate token. Returns 'accepted' | 'rejected' | 'unreachable'.
+ * Probes the live API with a candidate token.
  *
- * 401 is the ONLY rejection, and that is measured rather than assumed: probed
- * against the live service on 2026-07-29, both an unknown bearer and an absent
- * header return 401 with error.code "unauthorized". A 403 means the token is real
- * but lacks a scope; a 503 means the token is real but the weekly job has not run.
- * Treating either as a bad token would send an executive off to hunt for a
- * replacement they do not need — the exact wild goose chase this feature removes.
+ * Returns 'accepted' | 'rejected' | 'indeterminate' | 'unreachable'. Only
+ * 'accepted' may be persisted.
+ *
+ * The accept rule is an ALLOW-LIST, not "anything but 401" (Codex review,
+ * finding 2). Measured on 2026-07-29: an unknown bearer and an absent header both
+ * return 401 with error.code "unauthorized", and a valid token returns 200. So:
+ *
+ *   200 -> authenticated and authorised.
+ *   403 -> authenticated, missing a scope. Still a REAL token; refusing it would
+ *          send an exec hunting for a replacement they do not need.
+ *   401 -> rejected. The one definitive negative.
+ *   everything else (404, 405, 5xx, proxy HTML, maintenance pages) -> INDETERMINATE.
+ *
+ * The last line is the finding: a 404 from a mistyped base_url, or a 502 from a
+ * proxy that never reached the auth layer, says nothing about the token. Storing on
+ * those would persist a token that never works and fail later at every call, which
+ * is the silent-failure mode this whole feature exists to remove.
  *
  * Deliberately bypasses the response cache and the ambient TOKEN: it is testing a
  * candidate, not serving data.
@@ -278,19 +321,30 @@ async function probeToken(candidate) {
   let res;
   try {
     res = await fetch(BASE_URL + '/v1/snapshot/today', {
-      headers: { Authorization: 'Bearer ' + candidate, Accept: 'application/json' }
+      headers: { Authorization: 'Bearer ' + candidate, Accept: 'application/json' },
+      /*
+       * MANUAL redirect handling. The sibling Collective plugin proved why: a wrong
+       * base_url there produced a 307 to /login, fetch followed it, and a 200
+       * text/html login page read as success. pulse-api happens to answer 404 on a
+       * bad path today, but relying on that is relying on someone else's routing.
+       */
+      redirect: 'manual',
     });
   } catch (e) {
     return { state: 'unreachable', detail: String((e && e.message) || e) };
   }
   if (res.status === 401) return { state: 'rejected', detail: '401 unauthorized' };
-  return { state: 'accepted', detail: 'HTTP ' + res.status };
-}
-
-/** Where the current token came from. Never includes the value itself. */
-function tokenSource() {
-  if (!TOKEN) return 'none';
-  return configValue('PULSE_BEARER_TOKEN', 'bearer_token') ? 'plugin config (entered at install)' : 'stored link (link_account)';
+  // Authenticated but missing a scope: a real token.
+  if (res.status === 403) return { state: 'accepted', detail: 'HTTP 403 (authenticated, scope-limited)' };
+  if (res.status !== 200) return { state: 'indeterminate', detail: 'HTTP ' + res.status };
+  /*
+   * A 200 must also LOOK like this API — the {data, meta} envelope. Belt and braces
+   * on top of redirect:manual, so a courtesy 200 from an intermediary cannot pass.
+   */
+  let body = null;
+  try { body = JSON.parse(await res.text()); } catch (e) { body = null; }
+  if (body && (body.data !== undefined || body.meta !== undefined)) return { state: 'accepted', detail: 'HTTP 200' };
+  return { state: 'indeterminate', detail: 'HTTP 200 but the response was not a Pulse API envelope' };
 }
 
 /** Validates a supplied token against the live API, then stores it. */
@@ -318,10 +372,21 @@ async function linkAccount(rawToken) {
       'App: Riven > Exec Tools > Your access tokens — and check it is the PULSE token, not the Collective one.'
     );
   }
+  if (probe.state === 'indeterminate') {
+    return toolError(
+      'Could not confirm that token: the Pulse API answered ' + probe.detail + ', which says nothing ' +
+      'about whether the token is valid. NOTHING was saved — storing it now would just fail later on ' +
+      'every request. Try again in a minute; if it keeps happening the service or its address is wrong, ' +
+      'not your token.'
+    );
+  }
 
   TOKEN = candidate;
+  tokenSourceLabel = 'stored link (link_account)';
   // A different token can carry different scope, so the previous account's cached
-  // rows must not survive a re-link.
+  // rows must not survive a re-link. The generation bump additionally stops an
+  // in-flight old-token request from re-seeding the cache after this clear.
+  tokenGeneration += 1;
   responseCache.clear();
 
   let persisted = true;
@@ -360,7 +425,7 @@ async function linkStatus() {
       type: 'text',
       text: JSON.stringify({
         linked: probe.state === 'accepted',
-        token_source: tokenSource(),
+        token_source: tokenSourceLabel,
         api_check: probe.state,
         detail: probe.detail,
         base_url: BASE_URL,
@@ -369,7 +434,8 @@ async function linkStatus() {
           : (probe.state === 'rejected'
             ? 'The stored token is no longer valid (it may have been rotated). Get a fresh one from the ' +
               'Business App: Riven > Exec Tools > Your access tokens, and re-link.'
-            : 'The Pulse API was unreachable. This looks like a network problem, not a token problem.')
+            : 'The Pulse API could not be reached or answered oddly (' + probe.detail + '). This looks ' +
+              'like a service or network problem, not a token problem — the stored token is untouched.')
       })
     }]
   };

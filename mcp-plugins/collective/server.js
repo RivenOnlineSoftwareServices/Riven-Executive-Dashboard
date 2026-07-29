@@ -103,13 +103,40 @@ function readStoredToken() {
  * it is advisory, but the file sits under the already per-user-ACL'd profile.
  */
 function writeStoredToken(token) {
-  fs.mkdirSync(CRED_DIR, { recursive: true });
-  fs.writeFileSync(CRED_FILE, JSON.stringify({ gateway_token: token }, null, 2) + '\n', { mode: 0o600 });
-  try { fs.chmodSync(CRED_FILE, 0o600); } catch (e) { /* Windows: not meaningful, not fatal. */ }
+  /*
+   * Directory 0o700, file 0o600, written to a temp path then RENAMED (Codex review,
+   * finding 3). Rename matters twice over: an existing credential file with broader
+   * permissions would otherwise be written into before chmod could tighten it, and
+   * rename is atomic so a crash mid-write cannot leave a truncated credential.
+   */
+  fs.mkdirSync(CRED_DIR, { recursive: true, mode: 0o700 });
+  try { fs.chmodSync(CRED_DIR, 0o700); } catch (e) { /* Windows: not meaningful, not fatal. */ }
+  const tmp = CRED_FILE + '.tmp';
+  fs.writeFileSync(tmp, JSON.stringify({ gateway_token: token }, null, 2) + '\n', { mode: 0o600 });
+  try { fs.chmodSync(tmp, 0o600); } catch (e) { /* Windows: not meaningful, not fatal. */ }
+  fs.renameSync(tmp, CRED_FILE);
 }
 
 /* Mutable so link_account works mid-session, with no restart asked of the exec. */
 let TOKEN = configValue('COLLECTIVE_GATEWAY_TOKEN', 'gateway_token') || readStoredToken();
+
+/*
+ * Bumped on every successful link. Requests capture it before their fetch and
+ * refuse to populate the cache if it changed while in flight (Codex review,
+ * finding 1): the stdio loop handles lines concurrently, so an old-token request
+ * can land AFTER a re-link cleared the cache and would otherwise seed the new
+ * identity with the previous one's hits.
+ */
+let tokenGeneration = 0;
+
+/*
+ * Tracked alongside TOKEN rather than re-derived from the environment, which
+ * reported "plugin config" forever once an env value existed — even after a link
+ * replaced it mid-session (Codex review, non-blocking note).
+ */
+let tokenSourceLabel = configValue('COLLECTIVE_GATEWAY_TOKEN', 'gateway_token')
+  ? 'plugin config (entered at install)'
+  : (TOKEN ? 'stored link (link_account)' : 'none');
 
 /*
  * The message an exec actually sees when nothing is configured. It names the one
@@ -231,13 +258,24 @@ function cacheSet(key, body) {
 }
 
 /**
- * Probes the live gateway with a candidate token. Returns 'accepted' | 'rejected' | 'unreachable'.
+ * Probes the live gateway with a candidate token.
  *
- * 401 is the ONLY rejection, and that is measured rather than assumed: probed
- * against the live gateway on 2026-07-29, an unknown token returns 401
- * {"error":"unauthorized"}. A 403 would mean the token is real but scoped away
- * from the namespace asked for — treating that as a bad token would send an
- * executive hunting for a replacement they do not need.
+ * Returns 'accepted' | 'rejected' | 'indeterminate' | 'unreachable'. Only
+ * 'accepted' may be persisted.
+ *
+ * The accept rule is an ALLOW-LIST, not "anything but 401" (Codex review,
+ * finding 2). Measured on 2026-07-29: an unknown token returns 401
+ * {"error":"unauthorized"}, a valid one returns 200. So:
+ *
+ *   200 -> authenticated and authorised.
+ *   403 -> authenticated, scoped away from this namespace. Still a REAL token.
+ *   401 -> rejected. The one definitive negative.
+ *   everything else (404, 405, 5xx, proxy HTML, App Hosting maintenance) -> INDETERMINATE.
+ *
+ * A 404 from a mistyped gateway_url, or a 502 from a proxy that never reached the
+ * auth layer, says nothing about the token. Storing on those would persist a token
+ * that never works and fail later at every call — the silent-failure mode this
+ * feature exists to remove.
  *
  * Uses a deliberately cheap, always-permitted namespace so the probe tests
  * AUTHENTICATION rather than a particular scope grant.
@@ -249,18 +287,31 @@ async function probeToken(candidate) {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Accept: 'application/json', 'X-Collective-Token': candidate },
       body: JSON.stringify({ index: 'alice', namespace: 'glowming_general', query: 'link check', topK: 1, topN: 1 }),
+      /*
+       * MANUAL redirect handling, and this is the whole reason the status check is
+       * not enough. A wrong gateway_url makes the app's auth middleware answer
+       * 307 -> /login; fetch follows redirects by default, lands on the login PAGE,
+       * and returns 200 text/html. A status-only rule reads that as success and
+       * stores a token against an address that can never serve the API. Caught by
+       * testing a VALID token against a wrong URL, which passed before this.
+       */
+      redirect: 'manual',
     });
   } catch (e) {
     return { state: 'unreachable', detail: String((e && e.message) || e) };
   }
   if (res.status === 401) return { state: 'rejected', detail: '401 unauthorized' };
-  return { state: 'accepted', detail: 'HTTP ' + res.status };
-}
-
-/** Where the current token came from. Never includes the value itself. */
-function tokenSource() {
-  if (!TOKEN) return 'none';
-  return configValue('COLLECTIVE_GATEWAY_TOKEN', 'gateway_token') ? 'plugin config (entered at install)' : 'stored link (link_account)';
+  // Authenticated but scoped away from this namespace: a real token.
+  if (res.status === 403) return { state: 'accepted', detail: 'HTTP 403 (authenticated, scope-limited)' };
+  if (res.status !== 200) return { state: 'indeterminate', detail: 'HTTP ' + res.status };
+  /*
+   * A 200 must also LOOK like this API. Belt and braces on top of redirect:manual:
+   * any intermediary that returns a courtesy 200 page would otherwise qualify.
+   */
+  let body = null;
+  try { body = JSON.parse(await res.text()); } catch (e) { body = null; }
+  if (body && Array.isArray(body.hits)) return { state: 'accepted', detail: 'HTTP 200' };
+  return { state: 'indeterminate', detail: 'HTTP 200 but the response was not a Collective search result' };
 }
 
 /** Validates a supplied token against the live gateway, then stores it. */
@@ -285,10 +336,20 @@ async function linkAccount(rawToken) {
       'The Collective gateway did not accept that token, so NOTHING was saved. Copy it again from the ' +
       'Business App: Riven > Exec Tools > Your access tokens — and check it is the COLLECTIVE token, not the Pulse one.' } }, true);
   }
+  if (probe.state === 'indeterminate') {
+    return asText({ error: { code: 'token_unconfirmed', message:
+      'Could not confirm that token: the gateway answered ' + probe.detail + ', which says nothing about ' +
+      'whether the token is valid. NOTHING was saved — storing it now would just fail later on every ' +
+      'request. Try again in a minute; if it keeps happening the gateway or its address is wrong, not ' +
+      'your token.' } }, true);
+  }
 
   TOKEN = candidate;
+  tokenSourceLabel = 'stored link (link_account)';
   // A different token can carry different namespace scope, so the previous
-  // account's cached hits must not survive a re-link.
+  // account's cached hits must not survive a re-link. The generation bump
+  // additionally stops an in-flight old-token request re-seeding after this clear.
+  tokenGeneration += 1;
   searchCache.clear();
 
   let persisted = true;
@@ -327,7 +388,7 @@ async function linkStatus() {
       type: 'text',
       text: JSON.stringify({
         linked: probe.state === 'accepted',
-        token_source: tokenSource(),
+        token_source: tokenSourceLabel,
         gateway_check: probe.state,
         detail: probe.detail,
         base_url: BASE_URL,
@@ -336,7 +397,8 @@ async function linkStatus() {
           : (probe.state === 'rejected'
             ? 'The stored token is no longer valid (it may have been rotated). Get a fresh one from the ' +
               'Business App: Riven > Exec Tools > Your access tokens, and re-link.'
-            : 'The gateway was unreachable. This looks like a network problem, not a token problem.'),
+            : 'The gateway could not be reached or answered oddly (' + probe.detail + '). This looks like ' +
+              'a service or network problem, not a token problem — the stored token is untouched.'),
       }),
     }],
   };
@@ -355,6 +417,9 @@ async function gatewaySearch(index, namespace, query, topK, topN, type) {
   const cacheKey = createHash('sha256').update(JSON.stringify(payload)).digest('hex');
   const cached = cacheGet(cacheKey);
   if (cached) return cached;
+  // Captured BEFORE the await: if a link lands while this request is in flight,
+  // these hits belong to the previous identity and must not be cached.
+  const gen = tokenGeneration;
   let res;
   try {
     res = await fetch(BASE_URL + '/api/search', {
@@ -369,7 +434,7 @@ async function gatewaySearch(index, namespace, query, topK, topN, type) {
   let body;
   try { body = JSON.parse(text); } catch (e) { body = { raw: text }; }
   if (!res.ok) return { error: { code: 'http_' + res.status, message: (body && body.error) || text } };
-  cacheSet(cacheKey, body); // only successful responses are cached (60s TTL).
+  if (gen === tokenGeneration) cacheSet(cacheKey, body); // successful AND still the same identity (60s TTL).
   return body; // { hits: [...] }
 }
 
