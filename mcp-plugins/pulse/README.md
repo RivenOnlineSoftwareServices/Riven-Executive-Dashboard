@@ -29,8 +29,22 @@ time:
 claude plugin install pulse@riven-exec --config bearer_token=<your token>
 ```
 
-There is no `claude plugin config` command. To change the token later, re-run that
-line with the new value.
+To change the token later, use the interactive configure flow inside Claude Code:
+
+```
+/plugin configure pulse@riven-exec
+```
+
+(`claude plugin config` as a shell command does NOT exist, but `/plugin configure`
+inside a session DOES — verified against the CLI's own `claude plugin install
+--help`, which describes `--config` as storing "via the same path as the
+interactive /plugin configure flow".)
+
+⚠️ **The installer prints a misleading line.** After a successful install with
+`--config bearer_token=...` it still says *"1 userConfig option not yet set"*.
+That is counting `base_url`, which has a default and needs nothing. Verified
+2026-07-28: the token WAS stored. Do not re-run the install because of that
+message.
 
 Reload, and the `mcp__pulse__*` tools attach with the `pulse-brief` skill.
 

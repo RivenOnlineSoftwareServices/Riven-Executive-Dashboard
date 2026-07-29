@@ -111,16 +111,31 @@ failed. **exec-workspace** takes no configuration at all.
   claude plugin install exec-workspace@riven-exec
   ```
 
-- ⚠️ **`claude plugin config` DOES NOT EXIST.** It is not a command; it reports an
-  unknown command. If an exec was told to run it, that instruction was wrong —
-  say so plainly and give them the `--config` form above. (An assistant told an
-  exec exactly this on 2026-07-28, alongside a second wrong claim that the
-  plugins' URLs needed "baking in" — they were already defaulted in both the
-  manifest and the server.)
-- **To CHANGE a token later:** re-run the install line for that plugin with the
-  new value, or re-enter it in the in-app dialog. Non-sensitive values live in
-  `~/.claude/settings.json` under `pluginConfigs`; tokens go to the OS keychain,
-  so they are not editable in a text file.
+- ⚠️ **`claude plugin config` is not a SHELL command** — that spelling reports an
+  unknown command. But **`/plugin configure <plugin>@riven-exec` inside a Claude
+  Code session IS real**, and it is the way to set or change a value after
+  install. Verified 2026-07-28 against `claude plugin install --help`, which
+  describes `--config` as storing "via the same path as the interactive /plugin
+  configure flow". An earlier version of this file said no post-install
+  configuration existed at all; that was wrong and is corrected here.
+- ⚠️ **THE INSTALLER PRINTS A MISLEADING LINE. Do not send anyone round again
+  because of it.** After a SUCCESSFUL `claude plugin install pulse@riven-exec
+  --config bearer_token=...` it still reports *"1 userConfig option not yet
+  set"*. That is counting `base_url`, which has a default and needs nothing.
+  Verified by walking the real install on 2026-07-28: the token was stored
+  (it lands in the credential store under `pluginSecrets`, NOT in
+  `settings.json`, which is why a settings check looks empty and proves nothing).
+- **To CHANGE a token later:** `/plugin configure <plugin>@riven-exec` in a
+  session, or re-run the install line with the new value. Non-sensitive values
+  live in `~/.claude/settings.json` under `pluginConfigs`; tokens go to the OS
+  credential store, so they are not editable in a text file.
+- **If the plugin installs but its tools never appear at all** — no error, just
+  absent from the connectors list — the MCP server is not launching, which is a
+  DIFFERENT failure from a bad token. The server runs `node server.js`, so the
+  app must be able to resolve `node` on its PATH. Have them run `node -v` in a
+  terminal: below v18, or "not recognized", and the server cannot start no matter
+  how good the token is. This is the state Anton reached on 2026-07-28 after the
+  token problem was already fixed.
 - **Never put these in a project's `.claude/settings.json`.** `pluginConfigs`
   entries there are deliberately ignored, so a value placed in a repo silently
   does nothing.
