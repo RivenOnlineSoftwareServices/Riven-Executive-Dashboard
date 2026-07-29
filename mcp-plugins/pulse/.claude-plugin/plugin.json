@@ -2,17 +2,16 @@
   "$schema": "https://code.claude.com/schemas/plugin-schema.json",
   "name": "pulse",
   "displayName": "Glowming Pulse",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Read-only MCP access to the Glowming Pulse /v1/* analytics API (daily snapshot, weekly digest, and the nine data marts) for the Riven Dashboard 2026. Internal — Riven OSS only.",
   "author": { "name": "Riven OSS", "email": "riaan@riven.co.za" },
   "keywords": ["glowming", "pulse", "analytics", "dashboard", "riven"],
   "userConfig": {
     "bearer_token": {
       "type": "string",
-      "title": "Pulse API bearer token",
-      "description": "Your Pulse API bearer token, from the Business App: Riven > Exec Tools > Your access tokens. Stored by the plugin and never shown to the assistant. This is the ONLY value you need to set.",
-      "sensitive": true,
-      "required": true
+      "title": "Pulse API bearer token (optional — you can also link later)",
+      "description": "Your Pulse API bearer token, from the Business App: Riven > Exec Tools > Your access tokens. OPTIONAL: if you leave this blank, or if your app shows no field here at all, just ask Claude to 'link my Pulse account' once installed and paste the token then. Deliberately not required — plugin config is read-only after install, so a required field that an exec cannot see or fill would be an unrecoverable dead end.",
+      "sensitive": true
     },
     "base_url": {
       "type": "string",

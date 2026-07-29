@@ -13,8 +13,29 @@ Zero-dependency Node stdio MCP server (Node 18+ for global `fetch`).
 
 ## Install
 
-Install the **pulse** plugin from the `riven-exec` marketplace and set
-`bearer_token` — the only value you need. Riven OSS issues that token.
+Install the **pulse** plugin from the `riven-exec` marketplace. Then hand it your
+token **whichever way is easiest** — there are two, and neither is a prerequisite
+of the other:
+
+**1. In chat, after installing (works everywhere — use this if in doubt).** Ask:
+
+> link my Pulse account with this token: `<paste token>`
+
+The plugin validates it against the live API before saving anything, tells you
+straight away whether it worked, and remembers it for future sessions. No reinstall,
+no config screen, no restart. Ask *"is Pulse linked?"* any time to check.
+
+**2. At install time**, by setting `bearer_token`. Optional, and only possible
+during install.
+
+> **Why chat is the reliable path.** A plugin's configuration is **read-only once
+> installed** — the per-plugin menu offers Uninstall, not Configure, and the values
+> render as plain text. So if you install without entering the token, or your app
+> shows no field for it at all, install-time config gives you no second chance.
+> Three onboarding attempts died on exactly that. `link_account` exists so token
+> entry never depends on a dialog being there.
+
+Get the token from the Business App: **Riven → Exec Tools → Your access tokens.**
 
 **`base_url` needs nothing from you.** It defaults to the production Cloud Run
 service in `plugin.json`, and `server.js` falls back to the same URL if the value
