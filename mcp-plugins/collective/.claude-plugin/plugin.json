@@ -2,17 +2,16 @@
   "$schema": "https://code.claude.com/schemas/plugin-schema.json",
   "name": "collective",
   "displayName": "The Collective",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Read-only MCP access to The Collective retrieval gateway — search Alice (Glowming brand + ops knowledge) and ask the personas (Iris / Zac / Heyu / Alice). Scope is enforced gateway-side by the token. Internal — Riven OSS only.",
   "author": { "name": "Riven OSS", "email": "riaan@riven.co.za" },
   "keywords": ["glowming", "collective", "alice", "personas", "retrieval", "riven"],
   "userConfig": {
     "gateway_token": {
       "type": "string",
-      "title": "Collective gateway token",
-      "description": "Your Collective gateway token, from the Business App: Riven > Exec Tools > Your access tokens. Exec tokens are scoped to Glowming knowledge only. This is the ONLY value you need to set.",
-      "sensitive": true,
-      "required": true
+      "title": "Collective gateway token (optional — you can also link later)",
+      "description": "Your Collective gateway token, from the Business App: Riven > Exec Tools > Your access tokens. Exec tokens are scoped to Glowming knowledge only. OPTIONAL: if you leave this blank, or if your app shows no field here at all, just ask Claude to 'link my Collective account' once installed and paste the token then. Deliberately not required — plugin config is read-only after install, so a required field that an exec cannot see or fill would be an unrecoverable dead end.",
+      "sensitive": true
     },
     "gateway_url": {
       "type": "string",

@@ -14,11 +14,34 @@ Mirrors the sibling `pulse-mcp-plugin`: Node built-ins + global `fetch` only, no
 | `collective_search {index, namespace, query, topK?, topN?, type?}` | Reranked search of one namespace. Returns `{hits:[{score, source_file, type, text}]}`. |
 | `ask_persona {persona, query, topN?}` | Fans a question across a persona's core namespaces (`alice` / `heyu` / `iris` / `zac`) and returns merged hits. |
 
-## Config (set at install)
+## Linking your account
+
+Two ways to hand the plugin your token. Neither depends on the other.
+
+**1. In chat, after installing (works everywhere — use this if in doubt).** Ask:
+
+> link my Collective account with this token: `<paste token>`
+
+The plugin validates it against the live gateway before saving anything, says
+immediately whether it worked, and remembers it for future sessions. No reinstall,
+no config screen, no restart. Ask *"is the Collective linked?"* any time to check.
+
+**2. At install time**, by setting `gateway_token`. Optional, and only possible
+during install.
+
+> **Why chat is the reliable path.** A plugin's configuration is **read-only once
+> installed** — the per-plugin menu offers Uninstall, not Configure. If you install
+> without entering the token, or your app shows no field for it, install-time config
+> gives you no second chance. `link_account` exists so token entry never depends on
+> a dialog being there.
+
+Get the token from the Business App: **Riven → Exec Tools → Your access tokens.**
+
+## Config fields
 
 | Field | Value |
 |-------|-------|
-| `gateway_token` | **The only value you need.** Your Collective gateway token, issued by Riven OSS. Exec tokens are scoped to Glowming knowledge only. |
+| `gateway_token` | Your Collective gateway token, issued by Riven OSS. Exec tokens are scoped to Glowming knowledge only. **Optional** — leave blank and link in chat instead. |
 | `gateway_url` | **Leave alone.** Defaults to `https://chat.glowming.business` in `plugin.json`, and `server.js` falls back to the same URL independently. |
 
 **In Cowork / Claude Desktop** enabling the plugin prompts for its configuration —
