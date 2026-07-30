@@ -50,10 +50,14 @@ people:
 
 - **Sharing shows the whole conversation from the start**, not just from the moment
   they shared it. Say so before they share something they would not want read.
-- **The person they share with can read and reply, but cannot rename, archive or
-  delete it.** Only the owner can. If someone shares something with them that they
-  no longer want in their sidebar, they use **Leave** — it stays with the owner, and
-  nobody else loses it.
+- **Shared with the wrong person? Open Share… again and click their name to remove
+  them.** There is no separate "un-share" button, which is not obvious, so tell them
+  where it is *before* they need it rather than after.
+- **The person they share with can read and reply — nothing else.** They cannot
+  rename, archive or delete it, and they cannot pass it on to anyone else. Sharing
+  stays the owner's decision, so an exec always knows who can see their conversation.
+  If someone shares something with them that they no longer want in their sidebar,
+  they use **Leave** — it stays with the owner, and nobody else loses it.
 
 Good moment to suggest it: when an exec has been going back and forth with Heyu on
 something another exec should see. Sharing the conversation beats forwarding a
