@@ -58,6 +58,12 @@ people:
   stays the owner's decision, so an exec always knows who can see their conversation.
   If someone shares something with them that they no longer want in their sidebar,
   they use **Leave** — it stays with the owner, and nobody else loses it.
+- **Handing something over properly.** If a conversation should really belong to
+  someone else — they are picking up the work, not just reading it — share it first,
+  then use **Hand over…** and choose them. They become the owner; the original exec
+  stays in the conversation but can no longer rename, archive, delete or share it.
+  It only offers people already in the conversation, and it is not reversible from
+  their side, so it is worth being deliberate about.
 
 Good moment to suggest it: when an exec has been going back and forth with Heyu on
 something another exec should see. Sharing the conversation beats forwarding a
