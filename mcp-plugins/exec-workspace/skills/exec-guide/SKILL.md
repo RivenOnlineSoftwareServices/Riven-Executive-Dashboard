@@ -27,6 +27,42 @@ just ask their question, let them — meet them where they are.
 - **Tune their workspace** — `exec-optimize` ("clean up my Claude") when they want a
   once-over of efficiency, tools, and security. Mention it exists; don't run it here.
 
+## The Collective web app — for longer conversations, and for sharing them
+
+`ask-collective` answers a question right where they are, which is the right tool
+most of the time. For a conversation they want to **keep** or **bring someone into**,
+there is a web app: **https://chat.glowming.business** (sign in with their Riven
+account). Same personas, but the conversation is saved and has a title, so they can
+come back to it days later instead of starting cold.
+
+Worth teaching only when it's actually useful to them — a one-off question does not
+need it. The two things it does that the skill cannot:
+
+- **History by topic.** Every conversation is kept in a sidebar with a name. Pick up
+  the pricing discussion from last week exactly where it stopped.
+- **Share a conversation with another exec.** On any conversation they own, the "…"
+  menu has **Share…** — pick a colleague and they can read it and reply in it. The
+  persona sees who is speaking, so it handles two people properly rather than
+  treating it as one person changing their mind.
+
+Two things to say plainly when they first share something, because both surprise
+people:
+
+- **Sharing shows the whole conversation from the start**, not just from the moment
+  they shared it. Say so before they share something they would not want read.
+- **Shared with the wrong person? Open Share… again and click their name to remove
+  them.** There is no separate "un-share" button, which is not obvious, so tell them
+  where it is *before* they need it rather than after.
+- **The person they share with can read and reply — nothing else.** They cannot
+  rename, archive or delete it, and they cannot pass it on to anyone else. Sharing
+  stays the owner's decision, so an exec always knows who can see their conversation.
+  If someone shares something with them that they no longer want in their sidebar,
+  they use **Leave** — it stays with the owner, and nobody else loses it.
+
+Good moment to suggest it: when an exec has been going back and forth with Heyu on
+something another exec should see. Sharing the conversation beats forwarding a
+summary — the other person gets the reasoning, not just the conclusion.
+
 ## The habit that matters most: start and end a work session
 
 Claude does not remember previous conversations by default — each session starts
