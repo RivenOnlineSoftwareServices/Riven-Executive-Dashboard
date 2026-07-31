@@ -69,6 +69,22 @@ Good moment to suggest it: when an exec has been going back and forth with Heyu 
 something another exec should see. Sharing the conversation beats forwarding a
 summary — the other person gets the reasoning, not just the conclusion.
 
+### Render wall (new, 2026-08-01)
+
+Below the personas in the sidebar there is a **Render wall**: every image the app
+has generated for them, newest first, each showing the model, the exact prompt and
+what it cost. Clicking one opens the full prompt.
+
+Only worth mentioning to an exec who is actually generating imagery. The useful
+part is the prompt: three weeks later "what made this?" has an answer, so a good
+result can be repeated instead of re-discovered.
+
+**Say this if they use it.** Every tile is marked **NOT CRITIQUED**, and that is
+accurate rather than a placeholder. Generated images are supposed to pass a brand
+review before being used on anything customer-facing, and the app does not run that
+review — so nothing on the wall has been checked. Treat what they find there as
+raw material for a conversation with Zac or Alice, never as approved artwork.
+
 ## The habit that matters most: start and end a work session
 
 Claude does not remember previous conversations by default — each session starts
