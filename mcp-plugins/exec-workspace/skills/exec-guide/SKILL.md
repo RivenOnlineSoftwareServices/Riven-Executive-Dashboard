@@ -79,11 +79,27 @@ Only worth mentioning to an exec who is actually generating imagery. The useful
 part is the prompt: three weeks later "what made this?" has an answer, so a good
 result can be repeated instead of re-discovered.
 
-**Say this if they use it.** Every tile is marked **NOT CRITIQUED**, and that is
-accurate rather than a placeholder. Generated images are supposed to pass a brand
-review before being used on anything customer-facing, and the app does not run that
-review — so nothing on the wall has been checked. Treat what they find there as
-raw material for a conversation with Zac or Alice, never as approved artwork.
+**Say this if they use it.** Generated images are supposed to pass a brand review
+before being used on anything customer-facing, and **the app now runs that review
+automatically** (as of 2026-08-01). So a tile carries one of two meanings, and the
+difference matters:
+
+- **A verdict — `PASS` or `FAIL`.** The review ran and judged it. A **`FAIL` is not
+  "unchecked"; it is "checked and rejected"**, usually with the specific reasons
+  listed. Most current output fails, correctly — the image generator does not know
+  the Glowming pouch and tends to invent the wordmark.
+- **`NOT CRITIQUED`.** Nothing has judged this one. Older images from before the
+  review existed will show this.
+
+Either way, treat what they find there as raw material for a conversation with Zac
+or Alice, never as approved artwork. A `PASS` means it cleared an automated check,
+not that anyone signed it off.
+
+> ⚠️ **Corrected 2026-08-02.** This section used to say *"every tile is marked NOT
+> CRITIQUED… the app does not run that review — so nothing on the wall has been
+> checked."* That was true when written and is now false — measured against the live
+> collection that day: **6 images, 4 carrying a stored verdict.** An exec working from
+> the old wording would have read a genuine `FAIL` as merely unchecked.
 
 ## The habit that matters most: start and end a work session
 
