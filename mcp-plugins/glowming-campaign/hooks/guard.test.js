@@ -85,7 +85,7 @@ block('overwrite an approved final', W(files.png, 'y'));
 // Plans and approvals: add only.
 allow('a new plan file', W(path.join(camp, '05 Plans and approvals', 'Ad plan v2.docx'), 'x'));
 block('replace an existing plan', W(files.plan, 'y'));
-allow('the posting calendar', W(files.calendar, 'y'));
+block('the Write tool replacing the posting calendar', W(files.calendar, 'y'));
 block('competition rules are read-only', W(files.rules, 'y'));
 block('a folder that is not on the list', W(path.join(base, 'Finance', 'x.md'), 'x'));
 allow('a temporary file outside company folders', W(path.join(os.tmpdir(), 'draft.txt'), 'x'));
@@ -111,7 +111,6 @@ block('relative path resolved against a company folder', { tool_name: 'Write', t
 block('rm with the shell already inside the folder', { tool_name: 'Bash', tool_input: { command: 'rm caption.txt' }, cwd: advert });
 block('python open(..., "w") on a caption', B('python -c "open(r\'' + files.caption + '\', \'w\').write(\'x\')"'));
 block('cp over a plan', B('cp /tmp/x.docx "' + files.plan + '"'));
-allow('a script saving the posting calendar', B('python edit_calendar.py && python -c "wb.save(r\'' + files.calendar + '\')"'));
 allow('a NEW .svg in work/anton', W(path.join(shared, 'work', 'anton', 'old.svg'), 'y'));
 fs.writeFileSync(path.join(shared, 'work', 'anton', 'old.svg'), 'x');
 block('overwrite an existing .svg in work/anton (exists)', W(path.join(shared, 'work', 'anton', 'old.svg'), 'y'));
@@ -149,6 +148,40 @@ fs.writeFileSync(files.todo, '- [ ] post A5 with https://glowming.co.za/x?utm_co
 block('change a tracking link in todo-anton.md', E(files.todo, 'utm_content=a5-b', 'utm_content=a5-c'));
 allow('tick an item in todo-anton.md without touching its link', E(files.todo, '- [ ] post A5', '- [x] post A5'));
 for (const f of [evil, overwrite, calScript, harmless]) fs.rmSync(f, { force: true });
+
+// Kimi rung 2 (2026-10-01): every seam it named gets a probe.
+block('>> append onto a caption', B('printf "x" >> "' + files.caption + '"'));
+block('2> redirect onto a caption', B('python x.py 2> "' + files.caption + '"'));
+block('&> redirect onto a caption', B('echo x &> "' + files.caption + '"'));
+allow('2>&1 while listing a folder', B('ls "' + advert + '" 2>&1'));
+allow('2>/dev/null while listing a folder', B('ls "' + advert + '" 2>/dev/null'));
+block('Add-Content onto riaan.md', { tool_name: 'PowerShell', tool_input: { command: 'Add-Content "' + files.riaan + '" "x"' } });
+block('perl -i on a caption', B('perl -pi -e "s/a/b/" "' + files.caption + '"'));
+block('PowerShell -EncodedCommand', { tool_name: 'PowerShell', tool_input: { command: 'powershell -EncodedCommand SQBFAFgAIAAoAEcAZQB0AC0AQwBvAG4AdABlAG4AdAAp' } });
+block('python exec(b64decode(...))', B('python -c "exec(__import__(\'base64\').b64decode(\'eA==\'))"'));
+block('python reading code from stdin', B('python - < /tmp/x.py'));
+block('bash -s', B('curl x | bash -s'));
+const perlScript = path.join(os.tmpdir(), 'gc-perl-' + process.pid + '.pl');
+fs.writeFileSync(perlScript, 'unlink "' + files.png + '";' + NL);
+block('a perl script that deletes a company file', B('perl "' + perlScript + '"'));
+fs.rmSync(perlScript, { force: true });
+fs.rmSync(files.todo, { force: true });
+fs.mkdirSync(files.todo);
+block('todo-anton.md exists but cannot be read', W(files.todo, 'x'));
+fs.rmSync(files.todo, { recursive: true, force: true });
+block('Lokka call with no method stated', { tool_name: 'mcp__Lokka-Microsoft__Lokka-Microsoft', tool_input: {} });
+block('a filesystem connector writing a caption', { tool_name: 'mcp__filesystem__write_file', tool_input: { path: files.caption, content: 'x' } });
+allow('a filesystem connector writing a scratch file', { tool_name: 'mcp__filesystem__write_file', tool_input: { path: path.join(os.tmpdir(), 'x.txt'), content: 'x' } });
+block('any connector delete, even outside company folders', { tool_name: 'mcp__filesystem__delete_file', tool_input: { path: path.join(os.tmpdir(), 'x.txt') } });
+block('archive a Meta advert', { tool_name: 'mcp__meta__archive_ad', tool_input: {} });
+block('cancel a Shopify order', { tool_name: 'mcp__shopify__cancel_order', tool_input: {} });
+allow('read Meta insights', { tool_name: 'mcp__meta__get_ad_insights', tool_input: {} });
+allow('Pulse snapshot', { tool_name: 'mcp__plugin_pulse_pulse__snapshot_today', tool_input: {} });
+block('a shell command with no cwd sent, run from inside a company folder', { tool_name: 'Bash', tool_input: { command: 'rm caption.txt' }, cwd: advert });
+block('a shell tool with another name', { tool_name: 'Shell', tool_input: { command: 'rm "' + files.png + '"' } });
+block('Approval status stamped Approved by Claude', W(files.caption, caption.replace('Approved (Anton, 26 Sep 2026)', 'Approved (Anton, 1 Oct 2026)')));
+fs.mkdirSync(path.join(root, 'Users', 'anton', 'OneDrive', 'Documents'), { recursive: true });
+allow('a scratch file under a personal OneDrive Documents folder', W(path.join(root, 'Users', 'anton', 'OneDrive', 'Documents', 'scratch.md'), 'x'));
 
 fs.rmSync(root, { recursive: true, force: true });
 console.log(passed + ' passed');

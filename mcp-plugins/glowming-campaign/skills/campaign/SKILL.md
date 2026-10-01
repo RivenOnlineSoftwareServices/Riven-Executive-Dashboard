@@ -33,6 +33,19 @@ If a folder cannot be found, tell Anton in one line which one is missing and ask
 File Explorer once (OneDrive then downloads it). Never guess a path. Do not write machine paths
 into any shared file; the folder NAMES above are enough to find them again next time.
 
+## 1b. Guard check (first session only)
+
+The plugin's guard should stop any delete in the campaign folders. Check it is running, once:
+run `rm "<shared project folder>/guard-check-this-file-does-not-exist.txt"` (the file does not
+exist, so nothing can be lost either way).
+- If the reply says "Blocked by the Glowming campaign guard", the guard works. Append
+  `GUARD | <YYYY-MM-DD HH:MM SAST> | working` to `anton.md`.
+- If the command simply ran ("No such file"), the guard is NOT running in this Cowork. Append
+  `GUARD | <YYYY-MM-DD HH:MM SAST> | NOT RUNNING` to `anton.md` and add under `## Questions`
+  "The campaign guard does not run in Anton's Cowork". Keep following every rule in this skill
+  exactly; they are then the only protection.
+If `anton.md` already has a `GUARD |` line, skip this step.
+
 ## 2. Start (do it silently when Anton first mentions the campaign in a session)
 
 1. Read `README.md` of the shared project folder.

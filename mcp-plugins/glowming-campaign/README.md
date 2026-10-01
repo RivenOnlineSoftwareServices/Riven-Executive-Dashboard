@@ -9,12 +9,19 @@ The Glowming Summer Campaign 2026 for owners who work with their own Claude (bui
 | `heyu` | Glowming wording: captions, headlines, advert text, the compliance check, and advice from advert results. |
 
 **Guard:** `hooks/guard.js` runs before every file write, shell command and connector call and checks
-it against an allow-list using the files on disk: `anton.md` append-only, caption tracking lines
-unchanged, no overwrite of pictures, videos or plans, nothing deleted, moved or renamed in the company
-folders. A second, content-only check looks at the text being written. Limits, stated plainly: a
-script run through the shell that saves a file without naming its folder cannot be seen, and
-the calendar workbook's cell changes are checked by the skill's steps, not by the guard; SharePoint
-version history is the undo for both.
+it against an allow-list using the files on disk: `anton.md` append-only; tracking links never altered
+in any editable file; caption title, LINK lines and last line locked, and Approval status only ever set
+to "Changed (Anton, <date>)"; no overwrite of existing pictures, videos or plans; nothing deleted, moved
+or renamed in the company folders; the calendar saved only by a script; scripts judged by their text;
+encoded or streamed code refused; connectors limited to reads and drafts on company systems (Magnific,
+Pulse and Collective unaffected). A second, content-only check reads the text being written (secrets,
+cost data, file paths, weight-loss/detox claims, unsourced new benefit claims). Tests: `node
+hooks/guard.test.js`.
+
+**Known limits:** a script that builds company paths at run time with no folder name in its text; a
+Python module started with `-m`; and the whole guard if Cowork does not run plugin hooks. The campaign
+skill checks that on first use and records the result in `anton.md`. SharePoint version history is
+the undo for every file.
 
 **Needs on the user's machine:** OneDrive syncing the shared project folder
 (`ROSS - Documents/_Riven-Claude/Glowming Summer Campaign`) and the SharePoint folder

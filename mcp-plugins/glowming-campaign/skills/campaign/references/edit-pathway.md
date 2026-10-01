@@ -71,6 +71,10 @@ File: `02 Posting calendar.xlsx`.
 - Checks: dates are real dates between 25 Sep and 30 Nov 2026; an advert code named in a row
   has a folder under `01 Ready to post` (the folder names are the only list of codes); the owner
   is a person's name.
+- How: write a short Python script to a file (openpyxl: load the workbook, change only the cells
+  agreed in step 4, save it to the same file) and run it. The guard refuses any other way of
+  saving the calendar, and refuses deleting, moving or renaming it.
+- Never change an existing "Link used" cell: tracking links are never altered.
 - If the workbook is open elsewhere or locked, stop and tell Anton; do not save a copy instead.
 
 ## Action 3: plans and approvals
