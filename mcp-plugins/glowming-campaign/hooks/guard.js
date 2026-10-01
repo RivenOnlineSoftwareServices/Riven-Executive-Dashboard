@@ -351,7 +351,9 @@ function unapprovedShellClaims(cmd, approvals) {
   const rest = src.replace(/"((?:[^"\\]|\\.)*)"|'([^']*)'/g, (m, dq, sq, at) => {
     const before = src.slice(0, at);
     const after = src.slice(at + m.length);
-    const alone = /(^|\s)$/.test(before) && /^\s*($|[;|&>)]|\d>)/.test(after);
+    // ...and BEFORE it only the command word and its flags (echo -n "..."), so no other argument
+    // can be glued on in front either (Codex PR #17 round 5: echo "Guaranteed: " "<approved>").
+    const alone = /(^|[;&|(\n])\s*[\w.-]+(\s+-[A-Za-z-]+)*\s+$/.test(before) && /^\s*($|[;|&>)]|\d>)/.test(after);
     n += unapprovedClaimCount(dq !== undefined ? dq : sq, alone ? approvals : [], false);
     return ' ; ';
   });
