@@ -128,5 +128,27 @@ allow('Magnific image generation', { tool_name: 'mcp__magnific__images_generate'
 allow('Magnific upload of a source photo', { tool_name: 'mcp__magnific__creations_upload_image', tool_input: {} });
 allow('Magnific stock download', { tool_name: 'mcp__magnific__stock_download', tool_input: {} });
 
+// Round 3: the calendar may be saved but never deleted; scripts are judged by their contents;
+// tracking links are protected in every editable text file.
+block('rm the posting calendar', B('rm "' + files.calendar + '"'));
+block('rename the posting calendar', B('mv "' + files.calendar + '" "' + files.calendar + '.old"'));
+const evil = path.join(os.tmpdir(), 'gc-evil-' + process.pid + '.py');
+fs.writeFileSync(evil, 'import os' + NL + 'os.remove(r"' + files.png + '")' + NL);
+block('a script that deletes a company file', B('python "' + evil + '"'));
+const overwrite = path.join(os.tmpdir(), 'gc-over-' + process.pid + '.py');
+fs.writeFileSync(overwrite, 'open(r"' + files.caption + '", "w").write("x")' + NL);
+block('a script that overwrites a caption', B('python ' + overwrite));
+const calScript = path.join(os.tmpdir(), 'gc-cal-' + process.pid + '.py');
+fs.writeFileSync(calScript, 'import openpyxl' + NL + 'wb = openpyxl.load_workbook(r"' + files.calendar + '")' + NL + 'wb.save(r"' + files.calendar + '")' + NL);
+allow('a script that saves only the posting calendar', B('python "' + calScript + '"'));
+const harmless = path.join(os.tmpdir(), 'gc-ok-' + process.pid + '.py');
+fs.writeFileSync(harmless, 'print("hello")' + NL);
+allow('a harmless script', B('python "' + harmless + '"'));
+block('an unreadable script started from a company folder', { tool_name: 'Bash', tool_input: { command: 'python missing.py' }, cwd: advert });
+fs.writeFileSync(files.todo, '- [ ] post A5 with https://glowming.co.za/x?utm_content=a5-b' + NL);
+block('change a tracking link in todo-anton.md', E(files.todo, 'utm_content=a5-b', 'utm_content=a5-c'));
+allow('tick an item in todo-anton.md without touching its link', E(files.todo, '- [ ] post A5', '- [x] post A5'));
+for (const f of [evil, overwrite, calScript, harmless]) fs.rmSync(f, { force: true });
+
 fs.rmSync(root, { recursive: true, force: true });
 console.log(passed + ' passed');

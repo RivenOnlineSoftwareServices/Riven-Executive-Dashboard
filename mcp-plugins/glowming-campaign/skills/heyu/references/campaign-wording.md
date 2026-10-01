@@ -114,7 +114,7 @@ These are templates the affiliate personalises and sends herself. Every one keep
 
 > 1. My welcome to you 💛
 > 2. R55 off your first order
-> 3. Code **[CODE]** · glowming.co.za · #ad
+> 3. Code **[CODE]** · glowming.co.za · #ad I earn commission when you use my code.
 
 ### C. Words on the share cards
 

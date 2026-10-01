@@ -117,6 +117,22 @@ function lockedCaptionLines(text) {
   return locked.join('\n');
 }
 
+/**
+ * Every existing line carrying a tracking link (utm_) must still be in the file after the
+ * change: links may be added, never altered or removed. Null = fine, else a reason.
+ */
+function keepsTracking(tool, input, current) {
+  if (current === null) return null;
+  const next = resultingText(tool, input, current);
+  if (next === null) return 'This change could not be checked against the tracking links. Re-read the file and try a smaller change.';
+  // Compare the tracking LINKS themselves (any run of non-space text containing utm_), so ticking
+  // "- [ ]" to "- [x]" on a line that carries a link is fine, while changing the link is not.
+  const links = (t) => unify(t).match(/[^\s"'<>()]*utm_[^\s"'<>()]*/gi) || [];
+  const after = new Set(links(next));
+  const lost = links(current).filter((l) => !after.has(l));
+  return lost.length ? 'Existing tracking links (utm_) never change. Leave those lines exactly as they are.' : null;
+}
+
 /** Decide one file write. Returns null to allow, or a plain-English reason to block. */
 function checkWrite(tool, input, cwd) {
   const given = input.file_path || input.notebook_path || '';
@@ -136,10 +152,10 @@ function checkWrite(tool, input, cwd) {
       return unify(next).startsWith(unify(current)) ? null
         : 'anton.md is append-only: earlier lines may not change. Add the new lines at the end instead.';
     }
-    if (shared === 'todo-anton.md') return null;
+    if (shared === 'todo-anton.md') return keepsTracking(tool, input, current);
     if (shared.startsWith('work/anton/')) {
       if (exists && !EDITABLE_TEXT.test(np)) return 'That file already exists. Save the new one under a new name (next version number) instead.';
-      return null;
+      return exists ? keepsTracking(tool, input, current) : null;
     }
     return 'Only anton.md, todo-anton.md and work/anton/ may be changed in the shared project folder. To change anything else, ask Riaan\'s side in anton.md under ## Questions.';
   }
@@ -168,17 +184,48 @@ function checkWrite(tool, input, cwd) {
 
 const DESTRUCTIVE_SHELL = /(^|[\s;&|(])(rm|del|erase|rmdir|rd|mv|move|ren|rename|unlink|shred|truncate)(\s|$)|remove-item|move-item|rename-item|clear-content|set-content|out-file|copy-item|robocopy|xcopy|shutil\.(rmtree|move)|os\.(remove|unlink|rename|replace|rmdir)|\.unlink\(|\.rename\(|\.rmdir\(|git\s+(clean|checkout|reset|rm|mv)|(^|[^>0-9])>(?![>&])|open\([^)]*['"][wax]b?\+?['"]|write_(text|bytes)\(|\.save\(|\.to_(csv|excel)\(|writefile|appendfile|copyfile|\btee\b|\bsed\s+-i|\bcp\s|\bcopy\s/i;
 
-/** Decide one shell command. Commands that touch a company folder AND could delete, move or overwrite are blocked. */
+// Deleting, moving or renaming: never in a company folder, the posting calendar included.
+const REMOVE_SHELL = /(^|[\s;&|(])(rm|del|erase|rmdir|rd|mv|move|ren|rename|unlink|shred|truncate)(\s|$)|remove-item|move-item|rename-item|clear-content|robocopy|xcopy|shutil\.(rmtree|move)|os\.(remove|unlink|rename|replace|rmdir)|\.unlink\(|\.rename\(|\.rmdir\(|git\s+(clean|checkout|reset|rm|mv)/i;
+const SCRIPT_FILE = /(?:"([^"]+\.(?:py|js|mjs|cjs|ps1|sh|bat|cmd))"|'([^']+\.(?:py|js|mjs|cjs|ps1|sh|bat|cmd))'|([^\s'"]+\.(?:py|js|mjs|cjs|ps1|sh|bat|cmd)))(?=$|[\s;&|)])/gi;
+
+/**
+ * The text of every script file a command runs (python x.py, node y.js, ...), so a
+ * script that writes or deletes company files is judged by what it DOES, not by the
+ * innocent-looking command that starts it. Returns { text, unreadable }.
+ */
+function scriptsRun(cmd, cwd) {
+  let text = '';
+  let unreadable = 0;
+  let m;
+  SCRIPT_FILE.lastIndex = 0;
+  while ((m = SCRIPT_FILE.exec(cmd)) !== null) {
+    const file = m[1] || m[2] || m[3];
+    const body = readText(path.resolve(cwd || process.cwd(), file));
+    if (body === null) unreadable++;
+    else text += String.fromCharCode(10) + body.slice(0, 500000);
+  }
+  return { text, unreadable };
+}
+
+/** Decide one shell command, including the scripts it runs. */
 function checkBash(input, cwd) {
   const cmd = String(input.command || '');
-  // The posting calendar is the one company file a script may save (SharePoint keeps its versions).
+  const scripts = scriptsRun(cmd, cwd);
+  const full = cmd + scripts.text;
+  const nfull = norm(full);
+  const inFolder = isProtected(norm(cwd || ''));
+  if ((isProtected(nfull) || inFolder) && REMOVE_SHELL.test(full)) {
+    return 'Deleting, moving or renaming files in the company folders is not allowed, the posting calendar included.';
+  }
+  // The posting calendar is the one company file a script may SAVE (SharePoint keeps its versions).
   // Strip each whole path that ends in the calendar (back to its opening quote), so its folder
-  // names do not count; any OTHER company path left in the command still does.
-  const withoutCalendar = norm(cmd).replace(/[^'"]*02 posting calendar\.xlsx/g, '');
-  const touches = isProtected(withoutCalendar) || isProtected(norm(cwd || ''));
-  if (!touches) return null;
-  if (DESTRUCTIVE_SHELL.test(cmd)) {
-    return 'Shell commands may not delete, move, rename or overwrite files in the company folders. Make the change with the campaign skill\'s checked steps instead.';
+  // names do not count; any OTHER company path left in the command or script still does.
+  const withoutCalendar = nfull.replace(/[^'"]*02 posting calendar\.xlsx/g, '');
+  if ((isProtected(withoutCalendar) || inFolder) && DESTRUCTIVE_SHELL.test(full)) {
+    return 'Shell commands and scripts may not overwrite files in the company folders (only the posting calendar may be saved). Make the change with the campaign skill\'s checked steps instead.';
+  }
+  if (inFolder && scripts.unreadable > 0) {
+    return 'A script was started from a company folder but could not be read, so it was blocked to be safe.';
   }
   return null;
 }

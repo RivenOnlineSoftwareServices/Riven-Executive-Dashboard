@@ -77,7 +77,7 @@ These lines are already approved and running. Reuse them exactly where they alre
 
 | Line | Note to show |
 |---|---|
-| "Gut health, energy, immunity and skin glow" and the benefit bubble "Gut health · energy · immunity · skin glow" | Owner-approved, live; source owed. Risk: "immunity" is the word Meta is most likely to reject. If Meta rejects it, report that as a fact and offer the line without "immunity". |
+| "Gut health, energy, immunity and skin glow" and the benefit bubble "Gut health · energy · immunity · skin glow" | Owner-approved, live; source owed. Risk: "immunity" is the word Meta is most likely to reject. If Meta rejects it, report that as a fact and ask Riaan's side in `anton.md` under `## Questions`; meanwhile offer wording about taste or the daily routine only (for example "Four flavours, one easy daily habit"), never a shortened health line. |
 | "Gut cleansing", "Supports an active lifestyle" (as on the live homepage) | Owner-approved, live; source owed for "Gut cleansing". |
 | "Green tea + L-carnitine for your active lifestyle", "Marine collagen + glutathione for your glow", "Psyllium, chia + okra for easy digestion" (live Journey page) | Owner-approved, live; source owed. Not about Milky Matcha for the psyllium line (Milky Matcha has no psyllium). |
 | "Over 70 million drinks sold globally" | Owner-approved, live, allowed in paid adverts (28 Sep); source owed. Always "drinks", never "sachets". |
