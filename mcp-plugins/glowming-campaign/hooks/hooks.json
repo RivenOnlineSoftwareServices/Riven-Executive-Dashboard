@@ -1,0 +1,17 @@
+{
+  "description": "Guard for the Glowming campaign files: no deletes, moves or overwrites; Riaan files and tracking links untouched.",
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Write|Edit|MultiEdit|NotebookEdit|Bash",
+        "hooks": [
+          {
+            "type": "prompt",
+            "prompt": "You guard the Glowming Summer Campaign files for a non-technical owner. Judge ONLY this one tool call: $TOOL_INPUT\n\nBLOCK it if it would do any of these: (1) delete, remove, rename or move any file or folder (rm, del, Remove-Item, mv, move, rename, rmdir, unlink, shutil.rmtree, os.remove, os.rename, git clean, or similar); (2) overwrite an existing picture or video file (.png .jpg .jpeg .webp .mp4 .mov); (3) write into the shared project files riaan.md, todo-riaan.md or README.md, or into 'resources/'; (4) write a file inside '06 Competition rules', '03 Affiliate packs' or '04 Hosts'; (5) replace an existing file inside '05 Plans and approvals' (adding a NEW file there is fine); (6) change a caption.txt line that starts with a LINK, or a line containing 'utm_'; (7) put a password, API key, card or bank number, or ID number into a file.\n\nALLOW everything else, including: reading anything; writing anton.md, todo-anton.md or anything under work/anton/; editing caption.txt post text, Headline, Short line, Button or Approval status; editing cells or adding rows in '02 Posting calendar.xlsx'; adding NEW files in '05 Plans and approvals' or in an advert folder under '01 Ready to post'; writing files outside the campaign folders (for example temporary working files).\n\nIf you block, say in one plain sentence which rule it breaks and what the safe alternative is.",
+            "timeout": 30
+          }
+        ]
+      }
+    ]
+  }
+}
