@@ -2,8 +2,8 @@
   "$schema": "https://code.claude.com/schemas/plugin-schema.json",
   "name": "pulse",
   "displayName": "Glowming Pulse",
-  "version": "1.1.0",
-  "description": "Read-only MCP access to the Glowming Pulse /v1/* analytics API (daily snapshot, weekly digest, and the nine data marts) for the Riven Dashboard 2026. Internal — Riven OSS only.",
+  "version": "1.2.0",
+  "description": "Read-only MCP access to the Glowming Pulse /v1/* analytics API (daily snapshot, weekly digest, and the ten data marts) for the Riven Dashboard 2026. Internal — Riven OSS only.",
   "author": { "name": "Riven OSS", "email": "riaan@riven.co.za" },
   "keywords": ["glowming", "pulse", "analytics", "dashboard", "riven"],
   "userConfig": {
