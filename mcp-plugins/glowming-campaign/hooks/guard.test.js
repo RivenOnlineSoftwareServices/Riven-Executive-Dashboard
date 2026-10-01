@@ -450,6 +450,13 @@ block('a Magnific prompt with an appetite claim', { tool_name: 'mcp__magnific__i
   block('an approved sentence EXTENDED into a stronger claim is refused',
     W(files.caption, caption.replace('Old post text.', 'Lose weight fast with Glowming twice as fast.')));
   allow('the approved sentence on its own is allowed', W(files.caption, caption.replace('Old post text.', 'Lose weight fast with Glowming.')));
+  // Codex PR #17 round 2: a wrapped line or a closing quote does not end the sentence.
+  block('an approved sentence continued on the next line is refused',
+    W(files.caption, caption.replace('Old post text.', 'Lose weight fast with Glowming' + NL + 'twice as fast.')));
+  block('an approved sentence continued after a closing quote is refused',
+    W(files.caption, caption.replace('Old post text.', '“Lose weight fast with Glowming” twice as fast.')));
+  allow('an approved sentence in quotes, ending the sentence, is allowed',
+    W(files.caption, caption.replace('Old post text.', '“Lose weight fast with Glowming.”')));
   rec('app');
   block('a tiny approval cannot mask a banned word', W(files.caption, caption.replace('Old post text.', 'It curbs your appetite.')));
   rec('Detox.');
@@ -463,6 +470,9 @@ block('a Magnific prompt with an appetite claim', { tool_name: 'mcp__magnific__i
   reset();
   block('an unapproved disease claim is refused', W(files.caption, caption.replace('Old post text.', 'Prevents diabetes.')));
   block('an unapproved benefit claim is refused', W(files.caption, caption.replace('Old post text.', 'Improves digestion.')));
+  block('heart and joint claims are refused', W(files.caption, caption.replace('Old post text.', 'Supports heart health and reduces joint pain.')));
+  block('a sleep claim is refused', W(files.caption, caption.replace('Old post text.', 'Improves sleep quality.')));
+  allow('everyday ritual wording is not a claim', W(files.caption, caption.replace('Old post text.', 'Your daily Glowming Ritual, four flavours, one sachet.')));
   allow('the owner-approved live line is allowed in new text', W(files.caption, caption.replace('Old post text.', 'Gut health, energy, immunity and skin glow.')));
   {
     // An anton.md somewhere else (not .../_Riven-Claude/Glowming Summer Campaign/) approves nothing.

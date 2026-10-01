@@ -291,16 +291,23 @@ function approvedClaims(from, cwd) {
 function unapprovedClaimCount(text, approvals, isLog) {
   let t = unify(String(text || ''));
   if (isLog) t = t.split(NL).filter((l) => !APPROVAL_LINE.test(l.trim())).join(NL);
-  t = claimForm(t);
+  // Matching is case-blind, but the BOUNDARIES are judged on the original case: a new line only
+  // ends the sentence when the next line starts a new one (capital, digit, bullet), so
+  // "...Glowming\ntwice as fast." is one sentence; a closing quote ends it only before sentence
+  // punctuation or the end (Codex PR #17 round 2, P1).
+  const orig = unify(t).replace(/[ \t]+/g, ' ');
+  t = orig.toLowerCase();
   // Find every approved span on the ORIGINAL text first, then mask them all at once, so one
   // approval can never cut into another (Codex PR #17 round 1, P2).
   const spans = [];
   for (const a of approvals) {
     for (let i = t.indexOf(a); i >= 0; i = t.indexOf(a, i + 1)) {
-      const before = t.slice(0, i);
-      const rest = t.slice(i + a.length);
-      const okBefore = /(^|[\n.!?:;"“'|·•([-])\s*$/.test(before);
-      const okAfter = /^[.!?]*\s*($|[\n"”'|)\]])/.test(rest) || /^[.!?]+\s/.test(rest);
+      const before = orig.slice(0, i);
+      const rest = orig.slice(i + a.length);
+      const okBefore = /(^|[.!?]["”']?\s|\n|:\s|\|\s?|·\s?|•\s?)["“']?\s*$/.test(before) || /^\s*["“']?\s*$/.test(before)
+        || /\s["“']$/.test(before); // a quoted sentence: echo "<approved words>"
+      const okAfter = /^["”']?[.!?]+["”']?(\s|$)/.test(rest) || /^["”']?\s*$/.test(rest)
+        || /^["”']?[ ]?\n\s*([A-Z0-9•*#-]|$)/.test(rest) || /^["”']?\s?(·|\|)/.test(rest);
       if (okBefore && okAfter) spans.push([i, i + a.length]);
     }
   }
@@ -314,7 +321,11 @@ function unapprovedClaimCount(text, approvals, isLog) {
 const CLAIM_REFUSAL = 'That text contains a health, benefit, weight-loss, detox, appetite, craving or cure claim that Anton has not approved word for word. Show Anton the exact sentence and the risk; only if he approves it, append CLAIM APPROVED | <date time SAST> | "<the exact sentence>" to anton.md first, then try again.';
 // Health, benefit and medical wording beyond the banned list: new wording of this kind also needs
 // Anton's recorded approval (it was the prompt hook's job before; Codex PR #17 round 1, P1).
-const BENEFIT_CLAIMS = /\bgut\s+(health|cleans\w*)|\bbloat\w*|\bdigest\w*|\bimmun\w*|\benerg(y|ise|ize|ising|izing)\b|skin\s+glow|glowing\s+skin|anti[\s-]?(ageing|aging|inflammatory)|\b(prevents?|treats?|treatment\s+for)\b|\bdiabetes|\bdiseases?\b|blood\s+(sugar|pressure)|cholesterol|\bcleans(e|es|ing)\b/i;
+const BENEFIT_CLAIMS = /\bgut\s+(health|cleans\w*)|\bbloat\w*|\bdigest\w*|\bimmun\w*|\benerg(y|ise|ize|ising|izing)\b|skin\s+glow|glowing\s+skin|anti[\s-]?(ageing|aging|inflammatory)|\b(prevents?|treats?|treatment\s+for)\b|\bdiabetes|\bdiseases?\b|blood\s+(sugar|pressure)|cholesterol|\bcleans(e|es|ing)\b|heart\s+health|\bjoints?\b|\bpain\b|\bsleep\w*|\binsomnia|\bmood\b|\bstress\b|\banxiety|\bdepress\w*|\bhormon\w*|\bliver\b|\bkidney|\bhair\s+(growth|loss)|\bwrinkl\w*|\binflamm\w*|\bcholest\w*|\bfertilit\w*|\bmemory\b|\bbrain\s+(health|function)|\bheal(th)?y\s+weight|\bwellbeing\s+benefits?|\b(boosts?|improves?|supports?|reduces?|relieves?|strengthens?|protects?|restores?)\s+(your\s+)?(the\s+)?(body|health|immune|gut|skin|energy|metabolism|sleep|mood|focus|heart|joints?|bones?|hair|nails|liver|digestion|circulation)\b/i;
+// What the word lists cannot see: a NEW health or benefit claim worded without any of these words.
+// A meaning-based check (the earlier prompt hook) cannot read Anton's approvals, so it would veto
+// exactly the wording the owner ruling allows him to approve; this list is the deterministic
+// substitute, and the heyu skill's rule (never PROPOSE a claim) covers the rest (PR #17).
 // Claims never allowed in anything this Claude writes or generates (owner rulings, 2026-10-01),
 // unless Anton approved the exact words (see approvedClaims above).
 const BANNED_CLAIMS = /weight[\s-]?(loss|control|management)|\bslimming|\bslim\s+down|fat[\s-]?(loss|burn)|(lose|losing|burn|burns|burning|melt)\s+(the\s+)?(fat|kg|kilos?|weight)|belly\s+fat|\d+\s*kg\b|\bdetox|appetite|craving|\bmetaboli|\bcures?\b|\bheals?\b|clinically\s+proven/i;
