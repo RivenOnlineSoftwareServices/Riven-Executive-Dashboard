@@ -29,9 +29,21 @@ Anton's Cowork has his OneDrive connected. Look for, by name:
   `04 Hosts`, `05 Plans and approvals`, `06 Competition rules`);
 - product pictures and logos: `GSA All Assets/02_Products/All Products/`.
 
+Search ONLY inside the folder connected to this session, with Glob patterns such as
+`**/Glowming Summer Campaign/README.md` and `**/2026 Summer Campaign/01 Ready to post`. Never run
+`find` over the whole disk: it takes minutes and finds old copies elsewhere.
+
 If a folder cannot be found, tell Anton in one line which one is missing and ask him to open it in
 File Explorer once (OneDrive then downloads it). Never guess a path. Do not write machine paths
 into any shared file; the folder NAMES above are enough to find them again next time.
+
+**Times.** Every `<YYYY-MM-DD HH:MM SAST>` in this plugin comes from running
+`TZ=SAST-2 date '+%Y-%m-%d %H:%M'` immediately before writing the line. Never write a
+time you did not just read from that command.
+
+**First session.** If `anton.md` or `todo-anton.md` does not exist yet, create it with a one-line
+heading (`# anton.md — Anton's Claude (append-only)` / `# todo-anton.md — Anton's to-do`) and then
+append as usual.
 
 ## 1b. Guard check (first session only)
 
@@ -62,7 +74,7 @@ If `anton.md` already has a `GUARD |` line, skip this step.
 
 | Anton says | Do |
 |---|---|
-| "How are the adverts doing?" | If the `pulse` tools are installed, read them. Otherwise use the numbers in Riaan's newest END block and say how old they are. Ask the `heyu` skill for what to change, with a reason. |
+| "How are the adverts doing?" | If the `pulse` tools are installed, read `mart advert_performance` (one row per advert per day, keyed by the advert code in the link) and add it up per advert. Otherwise use the numbers in Riaan's newest END block and say how old they are. Ask the `heyu` skill for what to change, with a reason. |
 | "Change the words / caption of <advert>" | Caption action in `references/edit-pathway.md`: Heyu checks the words first, the tracking line stays exactly as it is. |
 | "Make a new advert / story version / video" | Use the `zac` skill. Renders follow `references/edit-pathway.md` (new files only, logged). |
 | "Move / add a post on the calendar" | Calendar action in `references/edit-pathway.md`. |

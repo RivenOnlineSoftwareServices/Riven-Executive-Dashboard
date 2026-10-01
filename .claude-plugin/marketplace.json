@@ -6,12 +6,12 @@
     "email": "riaan@riven.co.za"
   },
   "description": "Riven OSS executive plugins — Pulse analytics, Collective retrieval, and the Exec Workspace assistants (setup, guide, optimize, reminders). Install all three. Add this repo as a marketplace by URL so installs survive a restart.",
-  "version": "1.4.0",
+  "version": "1.4.1",
   "plugins": [
     {
       "name": "pulse",
       "source": "./mcp-plugins/pulse",
-      "description": "Read-only MCP access to the Glowming Pulse analytics API (daily snapshot, weekly digest, and the nine data marts), plus the pulse-brief executive briefing skill."
+      "description": "Read-only MCP access to the Glowming Pulse analytics API (daily snapshot, weekly digest, and the ten data marts), plus the pulse-brief executive briefing skill."
     },
     {
       "name": "collective",

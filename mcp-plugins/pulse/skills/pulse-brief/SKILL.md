@@ -32,9 +32,15 @@ tool call in the current turn. If a call fails or returns no data, say so plainl
 | `mcp__pulse__mart` (`name`, `limit?`) | Rows of one materialised mart. |
 | `mcp__pulse__mart_meta` (`name`) | Freshness of a mart (last refresh status, age, rows, data_through_ts). |
 
-The nine marts: `daily_snapshot`, `checkout_funnel`, `customer_clv`,
-`inventory_health`, `abandoned_recovery`, `ad_performance`,
+The ten marts: `daily_snapshot`, `checkout_funnel`, `customer_clv`,
+`inventory_health`, `abandoned_recovery`, `ad_performance`, `advert_performance`,
 `product_performance`, `product_quality`, `review_velocity`.
+
+`advert_performance` is one row per Meta advert per day: `date`, `ad_name` (e.g.
+`GJ26 | I1-B | feed`), `advert_code` (e.g. `i1-b`, the same code as the link's `utm_content`),
+`gj26_named`, campaign and ad set names, `spend`, `impressions`, `reach`, `link_clicks`,
+`purchases`, `purchase_value` (purchases may be null on a day with none). Newest days first;
+about 20-40 rows a day, so `limit` 300 covers roughly the last week and a half.
 
 ## Question → call mapping
 
@@ -46,6 +52,7 @@ The nine marts: `daily_snapshot`, `checkout_funnel`, `customer_clv`,
 | "Where are we losing sales / funnel?" | `mart checkout_funnel` — walk view_item → add_to_cart → begin_checkout → add_payment → purchase, and name the biggest drop-off as a %. |
 | "How's our reputation / reviews?" | `mart review_velocity` — count + average rating, and the trend. |
 | "Ad spend / ROAS / are ads running?" | `mart ad_performance` — spend, ROAS, and `effective_status` (say plainly whether anything is actively delivering). |
+| "How are the adverts doing? / which advert works best? / how is A5-B doing?" | `mart advert_performance` (limit 300) — add up per `advert_code` over the days asked about (default: since the advert started), give spend, link clicks, cost per click and purchases per advert, best and worst first. Say the newest day may still be filling in. |
 | "Customer value / repeat buyers" | `mart customer_clv`. |
 | "Stock / what's low?" | `mart inventory_health`. |
 | "Is the data current?" | `mart_meta <name>` — report the age / `data_through_ts`. |

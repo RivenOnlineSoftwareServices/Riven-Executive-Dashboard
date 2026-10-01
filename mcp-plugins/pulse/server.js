@@ -154,7 +154,7 @@ const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
 const CACHE_MAX = 256;
 const responseCache = new Map(); // path -> { expires: <ms epoch>, result: <pulseGet return> }
 
-// The 9 canonical marts (lower_snake_case, as the route expects).
+// The 10 canonical marts (lower_snake_case, as the route expects). advert_performance added 2026-10-01 (Pulse #116).
 const KNOWN_MARTS = [
   'daily_snapshot',
   'checkout_funnel',
@@ -162,6 +162,7 @@ const KNOWN_MARTS = [
   'inventory_health',
   'abandoned_recovery',
   'ad_performance',
+  'advert_performance',
   'product_performance',
   'product_quality',
   'review_velocity'
@@ -206,11 +207,11 @@ const TOOLS = [
   },
   {
     name: 'mart',
-    description: 'Rows of a materialised Pulse mart. GET /v1/marts/<name> (scope marts.read). Returns the full {data, meta} envelope as JSON. The nine marts: ' + KNOWN_MARTS.join(', ') + '.',
+    description: 'Rows of a materialised Pulse mart. GET /v1/marts/<name> (scope marts.read). Returns the full {data, meta} envelope as JSON. The ten marts: ' + KNOWN_MARTS.join(', ') + '.',
     inputSchema: {
       type: 'object',
       properties: {
-        name: { type: 'string', enum: KNOWN_MARTS, description: 'Mart name (one of the nine).' },
+        name: { type: 'string', enum: KNOWN_MARTS, description: 'Mart name (one of the ten).' },
         limit: { type: 'integer', minimum: 1, maximum: 10000, description: 'Max rows (default 1000, cap 10000).' }
       },
       required: ['name'],
@@ -223,7 +224,7 @@ const TOOLS = [
     inputSchema: {
       type: 'object',
       properties: {
-        name: { type: 'string', enum: KNOWN_MARTS, description: 'Mart name (one of the nine).' }
+        name: { type: 'string', enum: KNOWN_MARTS, description: 'Mart name (one of the ten).' }
       },
       required: ['name'],
       additionalProperties: false
