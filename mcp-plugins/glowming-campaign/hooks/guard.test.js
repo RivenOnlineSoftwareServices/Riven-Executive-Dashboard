@@ -441,6 +441,40 @@ block('a Magnific prompt with an appetite claim', { tool_name: 'mcp__magnific__i
   block('an unapproved claim in a Magnific prompt is still refused', { tool_name: 'mcp__magnific__images_generate', tool_input: { prompt: 'detox drink on a beach' }, cwd: base });
   reset();
 
+  reset();
+
+  // Codex PR #17 round 1: whole sentences only, no tiny approvals, order-proof, benefit words too,
+  // one canonical log.
+  const rec = (words) => fs.appendFileSync(files.anton, 'CLAIM APPROVED | 2026-10-01 17:40 SAST | "' + words + '"' + NL);
+  rec('Lose weight fast with Glowming.');
+  block('an approved sentence EXTENDED into a stronger claim is refused',
+    W(files.caption, caption.replace('Old post text.', 'Lose weight fast with Glowming twice as fast.')));
+  allow('the approved sentence on its own is allowed', W(files.caption, caption.replace('Old post text.', 'Lose weight fast with Glowming.')));
+  rec('app');
+  block('a tiny approval cannot mask a banned word', W(files.caption, caption.replace('Old post text.', 'It curbs your appetite.')));
+  rec('Detox.');
+  block('a one-word approval is ignored even as a whole sentence', W(files.caption, caption.replace('Old post text.', 'Detox.')));
+  reset();
+  rec('Daily detox drink.'); rec('Daily detox drink. Reduced cravings all day.');
+  allow('overlapping approvals, shorter recorded first', W(files.caption, caption.replace('Old post text.', 'Daily detox drink. Reduced cravings all day.')));
+  reset();
+  rec('Daily detox drink. Reduced cravings all day.'); rec('Daily detox drink.');
+  allow('overlapping approvals, longer recorded first', W(files.caption, caption.replace('Old post text.', 'Daily detox drink. Reduced cravings all day.')));
+  reset();
+  block('an unapproved disease claim is refused', W(files.caption, caption.replace('Old post text.', 'Prevents diabetes.')));
+  block('an unapproved benefit claim is refused', W(files.caption, caption.replace('Old post text.', 'Improves digestion.')));
+  allow('the owner-approved live line is allowed in new text', W(files.caption, caption.replace('Old post text.', 'Gut health, energy, immunity and skin glow.')));
+  {
+    // An anton.md somewhere else (not .../_Riven-Claude/Glowming Summer Campaign/) approves nothing.
+    const stray = path.join(camp, 'Glowming Summer Campaign');
+    fs.mkdirSync(stray, { recursive: true });
+    fs.writeFileSync(path.join(stray, 'anton.md'), 'CLAIM APPROVED | 2026-10-01 | "Melts belly fat overnight."' + NL);
+    block('an approval in a stray anton.md is ignored',
+      { tool_name: 'Write', tool_input: { file_path: files.caption, content: caption.replace('Old post text.', 'Melts belly fat overnight.') }, cwd: stray });
+    fs.rmSync(stray, { recursive: true, force: true });
+  }
+  reset();
+
   // The approval is recorded BEFORE the command (and so before the snapshot), as it is in use.
   approve(); ORIGINAL.anton = fs.readFileSync(files.anton);
   shell('Anton-approved words in a calendar cell are kept', B('python cal.py "' + files.calendar + '"'),

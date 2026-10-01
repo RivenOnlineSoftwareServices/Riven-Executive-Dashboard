@@ -246,49 +246,75 @@ const NET_CALL = /\b(curl|wget|iwr|irm|invoke-restmethod|invoke-webrequest)\b|\b
 // from Anton"). Anton's explicit approval of EXACT words overrides the claim rules. His Claude
 // records each approval as one appended line in anton.md:
 //   CLAIM APPROVED | <YYYY-MM-DD HH:MM SAST> | "<the exact words>"
-// A banned phrase is then allowed only INSIDE approved words; anything else is still refused, so
-// this Claude can never introduce a claim Anton did not approve word for word.
+// A claim word is then allowed only inside a WHOLE approved sentence (sentence boundaries on both
+// sides, so "Lose weight" never licenses "Lose weight twice as fast"; approvals under three words
+// are ignored, so "app" cannot mask "appetite"). Anything else is still refused, so this Claude
+// can never introduce a claim Anton did not approve word for word (Codex PR #17 round 1).
 const APPROVAL_LINE = /^CLAIM APPROVED \|[^|]*\|\s*"(.+)"\s*$/;
-const ANTON_LOG_PATHS = [
-  ['ROSS - Documents', '_Riven-Claude', 'Glowming Summer Campaign', 'anton.md'],
-  ['_Riven-Claude', 'Glowming Summer Campaign', 'anton.md'],
-  ['Glowming Summer Campaign', 'anton.md'],
-  ['anton.md'],
-];
+// Wording the owners approved before this rule existed, live in the adverts (campaign-rules.md).
+const BUILT_IN_APPROVALS = ['gut health, energy, immunity and skin glow', 'gut health · energy · immunity · skin glow'];
+// ONE log, at its canonical place only: .../_Riven-Claude/Glowming Summer Campaign/anton.md.
+const LOG_TAIL = ['_Riven-Claude', 'Glowming Summer Campaign', 'anton.md'];
 
-/** Every approved claim text (lower case) from the anton.md nearest to `from` or the session folder. */
-function approvedClaims(from, cwd) {
-  const starts = [from, cwd || process.cwd()].filter(Boolean);
-  for (const start of starts) {
+/** The canonical anton.md: searched from the session folder first, then from `from`; or null. */
+function campaignLog(from, cwd) {
+  for (const start of [cwd || process.cwd(), from].filter(Boolean)) {
     let dir = path.resolve(start);
     for (let i = 0; i < 12; i++) {
-      for (const parts of ANTON_LOG_PATHS) {
-        const p = path.join(dir, ...parts);
-        if (parts.length === 1 && path.basename(dir).toLowerCase() !== 'glowming summer campaign') continue;
-        const text = fs.existsSync(p) ? readText(p) : null;
-        if (text !== null) {
-          return unify(text).split(NL).map((l) => (l.trim().match(APPROVAL_LINE) || [])[1])
-            .filter((t) => t && t.trim().length >= 3).map((t) => t.trim().toLowerCase());
-        }
+      for (const p of [path.join(dir, 'ROSS - Documents', ...LOG_TAIL), path.join(dir, ...LOG_TAIL), path.join(dir, 'anton.md')]) {
+        if (norm(p).endsWith(norm(LOG_TAIL.join('/'))) && fs.existsSync(p)) return p;
       }
       const parent = path.dirname(dir);
       if (parent === dir) break;
       dir = parent;
     }
   }
-  return [];
+  return null;
 }
 
-/** How many banned phrases `text` holds OUTSIDE approved words. `isLog` also skips approval lines. */
+/** Lower case, CRLF unified, runs of spaces/tabs collapsed: the form approvals are matched in. */
+function claimForm(s) {
+  return unify(String(s || '')).toLowerCase().replace(/[ \t]+/g, ' ');
+}
+
+/** Every approved claim text (claim form, three words or more), built-in ones included. */
+function approvedClaims(from, cwd) {
+  const log = campaignLog(from, cwd);
+  const text = log ? readText(log) : null;
+  const recorded = text === null ? [] : unify(text).split(NL).map((l) => (l.trim().match(APPROVAL_LINE) || [])[1]);
+  return BUILT_IN_APPROVALS.concat(recorded.filter(Boolean))
+    .map((t) => claimForm(t).trim().replace(/[.!?]+$/, '').trim())
+    .filter((t) => t.split(' ').length >= 3);
+}
+
+/** How many claim words `text` holds OUTSIDE whole approved sentences. `isLog` skips approval lines. */
 function unapprovedClaimCount(text, approvals, isLog) {
   let t = unify(String(text || ''));
   if (isLog) t = t.split(NL).filter((l) => !APPROVAL_LINE.test(l.trim())).join(NL);
-  t = t.toLowerCase();
-  for (const a of approvals) t = t.split(a).join(' ');
-  return (t.match(new RegExp(BANNED_CLAIMS.source, 'gi')) || []).length;
+  t = claimForm(t);
+  // Find every approved span on the ORIGINAL text first, then mask them all at once, so one
+  // approval can never cut into another (Codex PR #17 round 1, P2).
+  const spans = [];
+  for (const a of approvals) {
+    for (let i = t.indexOf(a); i >= 0; i = t.indexOf(a, i + 1)) {
+      const before = t.slice(0, i);
+      const rest = t.slice(i + a.length);
+      const okBefore = /(^|[\n.!?:;"“'|·•([-])\s*$/.test(before);
+      const okAfter = /^[.!?]*\s*($|[\n"”'|)\]])/.test(rest) || /^[.!?]+\s/.test(rest);
+      if (okBefore && okAfter) spans.push([i, i + a.length]);
+    }
+  }
+  const chars = t.split('');
+  for (const [s, e] of spans) for (let k = s; k < e; k++) chars[k] = ' ';
+  const masked = chars.join('');
+  return (masked.match(new RegExp(BANNED_CLAIMS.source, 'gi')) || []).length
+    + (masked.match(new RegExp(BENEFIT_CLAIMS.source, 'gi')) || []).length;
 }
 
-const CLAIM_REFUSAL = 'That text contains a weight-loss, slimming, detox, appetite, craving, cure or "clinically proven" claim that Anton has not approved word for word. Show Anton the exact words and the risk; only if he approves them, append CLAIM APPROVED | <date time SAST> | "<exact words>" to anton.md first, then try again.';
+const CLAIM_REFUSAL = 'That text contains a health, benefit, weight-loss, detox, appetite, craving or cure claim that Anton has not approved word for word. Show Anton the exact sentence and the risk; only if he approves it, append CLAIM APPROVED | <date time SAST> | "<the exact sentence>" to anton.md first, then try again.';
+// Health, benefit and medical wording beyond the banned list: new wording of this kind also needs
+// Anton's recorded approval (it was the prompt hook's job before; Codex PR #17 round 1, P1).
+const BENEFIT_CLAIMS = /\bgut\s+(health|cleans\w*)|\bbloat\w*|\bdigest\w*|\bimmun\w*|\benerg(y|ise|ize|ising|izing)\b|skin\s+glow|glowing\s+skin|anti[\s-]?(ageing|aging|inflammatory)|\b(prevents?|treats?|treatment\s+for)\b|\bdiabetes|\bdiseases?\b|blood\s+(sugar|pressure)|cholesterol|\bcleans(e|es|ing)\b/i;
 // Claims never allowed in anything this Claude writes or generates (owner rulings, 2026-10-01),
 // unless Anton approved the exact words (see approvedClaims above).
 const BANNED_CLAIMS = /weight[\s-]?(loss|control|management)|\bslimming|\bslim\s+down|fat[\s-]?(loss|burn)|(lose|losing|burn|burns|burning|melt)\s+(the\s+)?(fat|kg|kilos?|weight)|belly\s+fat|\d+\s*kg\b|\bdetox|appetite|craving|\bmetaboli|\bcures?\b|\bheals?\b|clinically\s+proven/i;
