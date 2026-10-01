@@ -13,6 +13,40 @@ const path = require('path');
 const { decide } = require(process.env.GUARD_PATH || './guard.js');
 
 const NL = String.fromCharCode(10);
+const zlib = require('zlib');
+const calendarLinks = require(path.join(__dirname, 'calendar-links.js'));
+
+/** A minimal .xlsx-shaped zip (stored entries) whose shared strings hold the given cell texts. */
+function makeXlsx(file, cells) {
+  const entries = [
+    ['[Content_Types].xml', '<?xml version="1.0"?><Types/>'],
+    ['xl/sharedStrings.xml', '<?xml version="1.0"?><sst>' + cells.map((c) => '<si><t>' + c.replace(/&/g, '&amp;') + '</t></si>').join('') + '</sst>'],
+  ];
+  const locals = [];
+  const centrals = [];
+  let offset = 0;
+  for (const [name, text] of entries) {
+    const data = Buffer.from(text, 'utf8');
+    const nameBuf = Buffer.from(name, 'utf8');
+    const crc = zlib.crc32(data);
+    const lh = Buffer.alloc(30);
+    lh.writeUInt32LE(0x04034b50, 0); lh.writeUInt16LE(20, 4); lh.writeUInt32LE(crc, 14);
+    lh.writeUInt32LE(data.length, 18); lh.writeUInt32LE(data.length, 22); lh.writeUInt16LE(nameBuf.length, 26);
+    const ch = Buffer.alloc(46);
+    ch.writeUInt32LE(0x02014b50, 0); ch.writeUInt16LE(20, 4); ch.writeUInt16LE(20, 6); ch.writeUInt32LE(crc, 16);
+    ch.writeUInt32LE(data.length, 20); ch.writeUInt32LE(data.length, 24); ch.writeUInt16LE(nameBuf.length, 28);
+    ch.writeUInt32LE(offset, 42);
+    locals.push(lh, nameBuf, data);
+    centrals.push(ch, nameBuf);
+    offset += lh.length + nameBuf.length + data.length;
+  }
+  const cd = Buffer.concat(centrals);
+  const eocd = Buffer.alloc(22);
+  eocd.writeUInt32LE(0x06054b50, 0); eocd.writeUInt16LE(entries.length, 8); eocd.writeUInt16LE(entries.length, 10);
+  eocd.writeUInt32LE(cd.length, 12); eocd.writeUInt32LE(offset, 16);
+  fs.writeFileSync(file, Buffer.concat([...locals, cd, eocd]));
+}
+const LINK = 'https://glowming.co.za/pages/journey?utm_source=meta&utm_content=a5-b&utm_term=feed';
 const root = fs.mkdtempSync(path.join(os.tmpdir(), 'gc-guard-'));
 const base = path.join(root, 'Riven Online Software Services');
 const shared = path.join(base, 'ROSS - Documents', '_Riven-Claude', 'Glowming Summer Campaign');
@@ -47,7 +81,7 @@ fs.writeFileSync(files.caption, caption);
 fs.writeFileSync(files.png, 'x');
 fs.writeFileSync(files.plan, 'x');
 fs.writeFileSync(files.rules, 'x');
-fs.writeFileSync(files.calendar, 'x');
+makeXlsx(files.calendar, ['Mon 5 Oct', LINK]);
 fs.writeFileSync(files.antonPng, 'x');
 
 let passed = 0;
@@ -108,7 +142,7 @@ block('move a file through a connector', { tool_name: 'mcp__m365__sharepoint_mov
 allow('search through a connector', { tool_name: 'mcp__m365__sharepoint_search', tool_input: {} });
 
 // Round 2: path tricks, shell from inside the folder, script writes, connector effects.
-block('.. out of work/anton onto riaan.md', W(path.join(shared, 'work', 'anton', '..', '..', 'riaan.md'), 'x'));
+block('.. out of work/anton onto riaan.md', W(path.join(shared, 'work', 'anton') + path.sep + '..' + path.sep + '..' + path.sep + 'riaan.md', 'x'));
 block('relative path resolved against a company folder', { tool_name: 'Write', tool_input: { file_path: 'riaan.md', content: 'x' }, cwd: shared });
 block('rm with the shell already inside the folder', { tool_name: 'Bash', tool_input: { command: 'rm caption.txt' }, cwd: advert });
 block('python open(..., "w") on a caption', B('python -c "open(r\'' + files.caption + '\', \'w\').write(\'x\')"'));
@@ -179,7 +213,12 @@ block('archive a Meta advert', { tool_name: 'mcp__meta__archive_ad', tool_input:
 block('cancel a Shopify order', { tool_name: 'mcp__shopify__cancel_order', tool_input: {} });
 allow('read Meta insights', { tool_name: 'mcp__meta__get_ad_insights', tool_input: {} });
 allow('Pulse snapshot', { tool_name: 'mcp__plugin_pulse_pulse__snapshot_today', tool_input: {} });
-block('a shell command with no cwd sent, run from inside a company folder', { tool_name: 'Bash', tool_input: { command: 'rm caption.txt' }, cwd: advert });
+{
+  const before = process.cwd();
+  process.chdir(advert);
+  try { block('a shell command with no cwd sent, run from inside a company folder', { tool_name: 'Bash', tool_input: { command: 'rm caption.txt' } }); }
+  finally { process.chdir(before); }
+}
 block('a shell tool with another name', { tool_name: 'Shell', tool_input: { command: 'rm "' + files.png + '"' } });
 block('Approval status stamped Approved by Claude', W(files.caption, caption.replace('Approved (Anton, 26 Sep 2026)', 'Approved (Anton, 1 Oct 2026)')));
 fs.mkdirSync(path.join(root, 'Users', 'anton', 'OneDrive', 'Documents'), { recursive: true });
@@ -193,11 +232,46 @@ block('calendar saved without openpyxl', B('python -c "import shutil; x.save(r\'
 block('a relative caption path through a filesystem connector, from the advert folder', { tool_name: 'mcp__filesystem__write_file', tool_input: { path: 'caption.txt', content: 'x' }, cwd: advert });
 block('curl POST to the Meta API', B('curl -X POST "https://graph.facebook.com/v21.0/123/?status=PAUSED"'));
 block('python requests.post to an email API', B('python -c "import requests; requests.post(\'https://api.resend.com/emails\', json={})"'));
-allow('curl GET for reading a page', B('curl -s https://glowming.co.za/'));
+block('any web request from the shell, even a read', B('curl -s https://glowming.co.za/'));
 block('a shell-written draft with a weight-loss claim', B('echo "Lose weight fast with Glowming" > /tmp/draft.txt'));
 block('a Magnific prompt with a detox claim', { tool_name: 'mcp__magnific__images_generate', tool_input: { prompt: 'detox drink on a beach' } });
 allow('a Magnific prompt without claims', { tool_name: 'mcp__magnific__images_generate', tool_input: { prompt: 'sunset over Camps Bay, pouch on a table' } });
 allow('a search that mentions a banned word (reading, not writing)', B('grep -n "detox" /tmp/notes.txt'));
+
+// Codex round 5.
+block('curl --json to an API', B('curl --json \'{"enabled":true}\' https://example.com/api/settings'));
+block('python requests.get (any web request)', B('python -c "import requests; requests.get(\'https://example.com\')"'));
+const sh = path.join(os.tmpdir(), 'gc-sh-' + process.pid + '.sh');
+fs.writeFileSync(sh, 'printf x > "' + files.caption + '"' + NL);
+block('a shell script redirecting into a caption', B('bash "' + sh + '"'));
+fs.rmSync(sh, { force: true });
+block('Magnific prompt with an appetite claim', { tool_name: 'mcp__magnific__images_generate', tool_input: { prompt: 'drink that reduces your appetite' } });
+block('Magnific prompt with a cravings claim', { tool_name: 'mcp__magnific__images_generate', tool_input: { prompt: 'controls cravings all day' } });
+// The calendar: saved only by openpyxl naming the calendar, from anywhere, with its links kept.
+const calOther = path.join(os.tmpdir(), 'gc-calo-' + process.pid + '.py');
+fs.writeFileSync(calOther, 'import openpyxl' + NL + 'wb = openpyxl.load_workbook(r"' + files.calendar + '")' + NL + 'wb.save(r"' + path.join(advert, 'other.xlsx') + '")' + NL);
+block('an openpyxl script saving to another file', B('python "' + calOther + '"'));
+fs.rmSync(calOther, { force: true });
+const calSide = path.join(os.tmpdir(), 'gc-cals-' + process.pid + '.py');
+fs.writeFileSync(calSide, 'import openpyxl' + NL + 'wb = openpyxl.load_workbook("02 Posting calendar.xlsx")' + NL + 'wb.save("other.xlsx")' + NL);
+block('from inside the folder, an openpyxl script saving the calendar under another name', { tool_name: 'Bash', tool_input: { command: 'python "' + calSide + '"' }, cwd: camp });
+fs.rmSync(calSide, { force: true });
+const calRel = path.join(os.tmpdir(), 'gc-calr-' + process.pid + '.py');
+fs.writeFileSync(calRel, 'import openpyxl' + NL + 'calendar_path = "02 Posting calendar.xlsx"' + NL + 'wb = openpyxl.load_workbook(calendar_path)' + NL + 'wb.save(calendar_path)' + NL);
+allow('saving the calendar from inside the campaign folder', { tool_name: 'Bash', tool_input: { command: 'python "' + calRel + '"' }, cwd: camp });
+assert.strictEqual(calendarLinks.verifyAll(), null, 'links untouched: nothing to restore'); passed++;
+fs.rmSync(calRel, { force: true });
+const calLose = path.join(os.tmpdir(), 'gc-call-' + process.pid + '.py');
+fs.writeFileSync(calLose, 'import openpyxl' + NL + 'wb = openpyxl.load_workbook(r"' + files.calendar + '")' + NL + 'wb.save(r"' + files.calendar + '")' + NL);
+allow('an openpyxl calendar save is let through (links checked after)', B('python "' + calLose + '"'));
+makeXlsx(files.calendar, ['Mon 5 Oct', 'link removed']);
+assert.notStrictEqual(calendarLinks.verifyAll(), null, 'a lost link must be reported'); passed++;
+assert.deepStrictEqual(calendarLinks.linksIn(files.calendar), [LINK], 'the earlier calendar is put back'); passed++;
+fs.rmSync(calLose, { force: true });
+fs.writeFileSync(files.calendar, 'not a workbook');
+fs.writeFileSync(calLose, 'import openpyxl' + NL + 'wb = openpyxl.load_workbook(r"' + files.calendar + '")' + NL + 'wb.save(r"' + files.calendar + '")' + NL);
+block('a calendar that cannot be read as a workbook', B('python "' + calLose + '"'));
+fs.rmSync(calLose, { force: true });
 
 fs.rmSync(root, { recursive: true, force: true });
 console.log(passed + ' passed');

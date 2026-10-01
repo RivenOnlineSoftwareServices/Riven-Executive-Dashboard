@@ -37,6 +37,7 @@
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
+const calendarLinks = require('./calendar-links.js');
 
 const NL = String.fromCharCode(10);
 const SHARED = '_riven-claude/glowming summer campaign/';
@@ -210,11 +211,14 @@ function checkWrite(tool, input, cwd) {
 const REMOVE_SHELL = /(^|[\s;&|(])(rm|del|erase|rmdir|rd|mv|move|ren|rename|unlink|shred|truncate)(\s|$)|remove-item|move-item|rename-item|clear-content|robocopy|xcopy|rsync|shutil\.(rmtree|move)|os\.(remove|unlink|rename|replace|rmdir)|\.unlink\(|\.rename\(|\.rmdir\(|\b(rmsync|unlinksync|rmdirsync|renamesync)\b|\bfs\.(rm|unlink|rmdir|rename)\b|\bfs\.promises\.(rm|unlink|rmdir|rename)\b|git\s+(clean|checkout|reset|rm|mv)/i;
 // Writing file contents from code (command text AND the scripts it runs).
 const CODE_WRITE = /set-content|add-content|out-file|copy-item|open\([^)]*['"][wax]b?\+?['"]|write_(text|bytes)\(|\.save\(|\.to_(csv|excel)\(|writefile|appendfile|copyfile|createwritestream|\bfs\.(write|append|copy|cp)\w*|\btee\b|\bsed\s+-i|\bperl\s+-\w*i|\bdd\s+[^|;]*of=|\binstall\s|\bpatch\s|\bcp\s|\bcopy\s/i;
-// Calling a web API to change something (adverts, the shop, email) from the shell or a script.
-// Connectors are the only allowed route to company systems, and they are limited to reads and drafts.
-const NET_WRITE = /\bcurl\b[^|;\n]*(-x\s*(post|put|patch|delete)|--request\s+(post|put|patch|delete)|\s-d[\s'"]|--data|\s-f[\s'"]|--form|\s-t[\s'"]|--upload-file)|\bwget\b[^|;\n]*--(post|method)|invoke-(restmethod|webrequest)[^|;\n]*-method\s+['"]?(post|put|patch|delete)|\b(requests|httpx|session)\.(post|put|patch|delete)\(|method\s*[:=]\s*['"](post|put|patch|delete)['"]|\bsmtplib\b|\bsendmail\b|send_mail\(|graph\.facebook\.com|graph\.microsoft\.com|myshopify\.com|api\.resend\.com|api\.sendgrid\.com/i;
+// Any web request from the shell or a script. Anton never needs one (connectors and web reading
+// cover him), and every way of changing adverts, the shop or sending email would go through one,
+// so the whole class is refused rather than guessing which methods write (Codex round 5).
+const NET_CALL = /\b(curl|wget|iwr|irm|invoke-restmethod|invoke-webrequest)\b|\b(requests|httpx|aiohttp|urllib3?)\b|urlopen|http\.client|\bfetch\(|\baxios\b|xmlhttprequest|\bsmtplib\b|\bsendmail\b|send_mail\(|net\.webclient|\bsocket\.|graph\.facebook\.com|graph\.microsoft\.com|myshopify\.com|api\.resend\.com|api\.sendgrid\.com/i;
 // Claims that are never allowed in anything this Claude writes or generates (owner rulings, 2026-10-01).
-const BANNED_CLAIMS = /weight[\s-]?loss|lose\s+weight|los(e|ing)\s+\d+\s*kg|fat[\s-]?burn|burn(s|ing)?\s+fat|\bdetox|appetite\s+suppress|suppress(es)?\s+(your\s+)?appetite|fewer\s+cravings|\bslimming\b|\bcures?\b|\bheals?\b|clinically\s+proven/i;
+const BANNED_CLAIMS = /\bweight\b|\bslim|fat[\s-]?(loss|burn)|(lose|losing|burn|burns|burning|melt)\s+(the\s+)?(fat|kg|kilos?|weight)|belly\s+fat|\d+\s*kg\b|\bdetox|appetite|craving|\bmetaboli|\bcures?\b|\bheals?\b|clinically\s+proven/i;
+// Shell scripts are judged for redirects too (Python and JS are not: ">" there is not a redirect).
+const SHELL_SCRIPT = /\.(sh|bash|ps1|psm1|bat|cmd)$/i;
 // Shell redirection into a file: > >> 2> 2>> &> &>>, but not 2>&1. Judged on the COMMAND only
 // (scripts contain arrows and comparisons that are not redirects).
 const REDIRECT = /(^|[^=\-<>])(&|\d)?>{1,2}(?![&>=])/;
@@ -225,15 +229,25 @@ const SCRIPT_FILE = /(?:"([^"]+\.(?:py|js|mjs|cjs|ts|ps1|psm1|sh|bash|bat|cmd|pl
 /** The text of every script file a command runs, so a script is judged by what it DOES. */
 function scriptsRun(cmd, cwd) {
   let text = '';
+  let shellText = '';
   let unreadable = 0;
   let m;
   SCRIPT_FILE.lastIndex = 0;
   while ((m = SCRIPT_FILE.exec(cmd)) !== null) {
-    const body = readText(realLocation(m[1] || m[2] || m[3], cwd));
-    if (body === null) unreadable++;
-    else text += NL + body.slice(0, 500000);
+    const file = m[1] || m[2] || m[3];
+    const body = readText(realLocation(file, cwd));
+    if (body === null) { unreadable++; continue; }
+    text += NL + body.slice(0, 500000);
+    if (SHELL_SCRIPT.test(file)) shellText += NL + body.slice(0, 500000);
   }
-  return { text, unreadable };
+  return { text, shellText, unreadable };
+}
+
+/** The real location of the posting calendar a command or script names, or null. */
+function calendarNamed(full, cwd) {
+  const m = full.match(/(?:["']([^"'\n]*02 posting calendar\.xlsx)["'])|((?:[^\s"'\n]*\/)?02 posting calendar\.xlsx)/i);
+  if (!m) return null;
+  return realLocation((m[1] || m[2]).trim(), cwd);
 }
 
 /** Decide one shell command, including the scripts it runs. */
@@ -253,29 +267,41 @@ function checkBash(input, cwd) {
     return 'Deleting, moving or renaming files in the company folders is not allowed, the posting calendar included.';
   }
   // Throwing output away (2>/dev/null, >nul) writes no company file.
-  const cmdNoDiscard = cmd.replace(/(&|\d)?>{1,2}\s*(\/dev\/null|nul)\b/gi, '');
-  if ((isProtected(norm(cmd)) || inFolder) && REDIRECT.test(cmdNoDiscard)) {
+  const discard = /(&|\d)?>{1,2}\s*(\/dev\/null|nul)\b/gi;
+  const cmdNoDiscard = cmd.replace(discard, '');
+  const shellNoDiscard = scripts.shellText.replace(discard, '');
+  const redirects = REDIRECT.test(cmdNoDiscard) || REDIRECT.test(shellNoDiscard);
+  if ((isProtected(nfull) || inFolder) && redirects) {
     return 'Shell redirection (> or >>) into the company folders is not allowed. Make the change with the campaign skill\'s checked steps instead.';
   }
-  if (NET_WRITE.test(full)) {
-    return 'Changing adverts, the shop or sending email through a web API from the shell is not allowed from this Claude.';
+  if (NET_CALL.test(full)) {
+    return 'Web requests from the shell or a script are not allowed from this Claude (adverts, the shop and email are never changed this way). Use a connector to read, or ask Riaan\'s side.';
   }
-  if ((REDIRECT.test(cmdNoDiscard) || CODE_WRITE.test(full)) && BANNED_CLAIMS.test(full)) {
-    return 'That text contains a weight-loss, detox, appetite, cure or "clinically proven" claim, which is never allowed. Remove it.';
+  if ((redirects || CODE_WRITE.test(full)) && BANNED_CLAIMS.test(full)) {
+    return 'That text contains a weight, slimming, detox, appetite, craving, cure or "clinically proven" claim, which is never allowed. Remove it.';
   }
   // The posting calendar is the one company file a script may SAVE (SharePoint keeps its versions),
-  // and only one way: openpyxl loads it and wb.save() writes it back. Any other write in the same
-  // command or script (open(...,'w'), copy, redirect...) is refused.
+  // and only one way: openpyxl loads it and wb.save(<calendar>) writes it back. Any other write in
+  // the same command or script is refused, and every .save() must name the calendar.
+  let calendarSave = false;
   if (nfull.includes(CALENDAR) && CODE_WRITE.test(full)) {
+    const saves = full.match(/\.save\(([^)]*)\)/gi) || [];
     const otherWrites = CODE_WRITE.test(full.replace(/\.save\(/gi, ''));
-    if (otherWrites || !/openpyxl|load_workbook/i.test(full)) {
-      return 'The posting calendar may only be saved by an openpyxl script (load_workbook, change the agreed cells, wb.save). Nothing else may write it.';
+    if (otherWrites || !saves.length || !/openpyxl|load_workbook/i.test(full) || !saves.every((s) => /calendar/i.test(s))) {
+      return 'The posting calendar may only be saved by an openpyxl script: load_workbook, change the agreed cells, then wb.save(calendar_path). Nothing else may write it.';
     }
+    const file = calendarNamed(full, cwd);
+    if (!file || !fs.existsSync(file)) {
+      return 'The posting calendar named in that script could not be found, so the save was blocked.';
+    }
+    const problem = calendarLinks.snapshot(file);
+    if (problem) return problem;
+    calendarSave = true;
   }
   // Strip each whole path that ends in the calendar (back to its opening quote), so its folder
   // names do not count; any OTHER company path left in the command or script still does.
   const withoutCalendar = nfull.replace(/[^'"]*02 posting calendar\.xlsx/g, '');
-  if ((isProtected(withoutCalendar) || inFolder) && CODE_WRITE.test(full)) {
+  if ((isProtected(withoutCalendar) || (inFolder && !calendarSave)) && CODE_WRITE.test(full)) {
     return 'Shell commands and scripts may not overwrite files in the company folders (only the posting calendar may be saved). Make the change with the campaign skill\'s checked steps instead.';
   }
   if (inFolder && scripts.unreadable > 0) {

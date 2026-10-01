@@ -12,7 +12,9 @@ The Glowming Summer Campaign 2026 for owners who work with their own Claude (bui
 it against an allow-list using the files on disk: `anton.md` append-only; tracking links never altered
 in any editable file; caption title, LINK lines and last line locked, and Approval status only ever set
 to "Changed (Anton, <date>)"; no overwrite of existing pictures, videos or plans; nothing deleted, moved
-or renamed in the company folders; the calendar saved only by a script; scripts judged by their text;
+or renamed in the company folders; the calendar saved only by an openpyxl script, and put back by
+`hooks/calendar-links.js` if a save lost a tracking link; scripts judged by their text; no web requests
+from the shell;
 encoded or streamed code refused; connectors limited to reads and drafts on company systems (Magnific,
 Pulse and Collective unaffected). A second, content-only check reads the text being written (secrets,
 cost data, file paths, weight-loss/detox claims, unsourced new benefit claims). Tests: `node
