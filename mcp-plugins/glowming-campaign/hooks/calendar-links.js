@@ -62,13 +62,13 @@ function sheetNames(parts) {
   const names = {};
   const rels = {};
   for (const m of (parts['xl/_rels/workbook.xml.rels'] || '').matchAll(/<Relationship\s+([^>]*?)\/?>/g)) {
-    const id = (m[1].match(/\bId="([^"]+)"/) || [])[1];
-    const target = (m[1].match(/\bTarget="([^"]+)"/) || [])[1];
+    const id = (m[1].match(/\bId=["']([^"']+)["']/) || [])[1];
+    const target = (m[1].match(/\bTarget=["']([^"']+)["']/) || [])[1];
     if (id && target) rels[id] = 'xl/' + target.replace(/^\/?xl\//, '').replace(/^\//, '');
   }
   for (const m of (parts['xl/workbook.xml'] || '').matchAll(/<sheet\s+([^>]*?)\/?>/g)) {
-    const name = decodeXml((m[1].match(/\bname="([^"]+)"/) || [])[1] || '');
-    const id = (m[1].match(/\br:id="([^"]+)"/) || [])[1];
+    const name = decodeXml((m[1].match(/\bname=["']([^"']+)["']/) || [])[1] || '');
+    const id = (m[1].match(/\br:id=["']([^"']+)["']/) || [])[1];
     if (id && rels[id]) names[rels[id]] = 'sheet:' + name;
   }
   return names;
@@ -97,9 +97,9 @@ function cellTexts(file) {
     for (const m of xml.matchAll(/<c\s+([^>]*?)(?:\/>|>([\s\S]*?)<\/c>)/g)) {
       const attrs = m[1];
       const inner = m[2] || '';
-      const ref = (attrs.match(/\br="([A-Z]+\d+)"/) || [])[1];
+      const ref = (attrs.match(/\br=["']([A-Z]+\d+)["']/) || [])[1];
       if (!ref) continue;
-      const type = (attrs.match(/\bt="([^"]+)"/) || [])[1];
+      const type = (attrs.match(/\bt=["']([^"']+)["']/) || [])[1];
       const v = (inner.match(/<v>([\s\S]*?)<\/v>/) || [])[1];
       const f = (inner.match(/<f[^>]*>([\s\S]*?)<\/f>/) || [])[1] || '';
       let text = '';
@@ -111,13 +111,13 @@ function cellTexts(file) {
     const relsName = part.replace(/^xl\/worksheets\//, 'xl/worksheets/_rels/') + '.rels';
     const targets = {};
     for (const m of (parts[relsName] || '').matchAll(/<Relationship\s+([^>]*?)\/?>/g)) {
-      const id = (m[1].match(/\bId="([^"]+)"/) || [])[1];
-      if (id) targets[id] = decodeXml((m[1].match(/\bTarget="([^"]+)"/) || [])[1] || '');
+      const id = (m[1].match(/\bId=["']([^"']+)["']/) || [])[1];
+      if (id) targets[id] = decodeXml((m[1].match(/\bTarget=["']([^"']+)["']/) || [])[1] || '');
     }
     for (const m of xml.matchAll(/<hyperlink\s+([^>]*?)\/?>/g)) {
-      const ref = (m[1].match(/\bref="([^"]+)"/) || [])[1];
-      const id = (m[1].match(/\br:id="([^"]+)"/) || [])[1];
-      const loc = decodeXml((m[1].match(/\blocation="([^"]+)"/) || [])[1] || '');
+      const ref = (m[1].match(/\bref=["']([^"']+)["']/) || [])[1];
+      const id = (m[1].match(/\br:id=["']([^"']+)["']/) || [])[1];
+      const loc = decodeXml((m[1].match(/\blocation=["']([^"']+)["']/) || [])[1] || '');
       if (ref) out.set(name + '!' + ref + '#link', (id ? targets[id] || '' : '') + (loc ? '#' + loc : ''));
     }
   }
@@ -131,9 +131,20 @@ function cellLinks(file) {
   return out;
 }
 
-/** True when every link cell / target of `before` still holds exactly the same text in `after`. */
+/**
+ * True when every tracking cell of `before` is untouched in `after`: same text AND the same
+ * click-through hyperlink (none stays none), and every tracking hyperlink stays on its cell.
+ * Takes either cellLinks() maps or full cellTexts() maps; with full maps a hyperlink ADDED to a
+ * tracking cell is caught too (Codex round 9).
+ */
 function linksKept(before, after) {
-  for (const [k, v] of before) if (after.get(k) !== v) return false;
+  for (const [k, v] of before) {
+    if (!/utm_/i.test(v)) continue;
+    if (after.get(k) !== v) return false;
+    const cell = k.replace(/#link$/, '');
+    if (before.get(cell + '#link') !== after.get(cell + '#link')) return false;
+    if (k.endsWith('#link') && before.get(cell) !== after.get(cell)) return false;
+  }
   return true;
 }
 

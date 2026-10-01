@@ -159,12 +159,22 @@ function checkWrite(tool, input, cwd, before) {
   const raw = realLocation(given, cwd);
   const np = norm(raw);
   if (!isProtected(np)) return null; // a temporary working file outside the company folders
-  // New text going into a company folder never carries a banned claim (owner rulings 2026-10-01).
-  const added = tool === 'Write' ? input.content
-    : tool === 'MultiEdit' ? (input.edits || []).map((e) => e.new_string || '').join(NL)
-      : (input.new_string || input.new_source || '');
-  if (typeof added === 'string' && BANNED_CLAIMS.test(added)) {
-    return 'That text contains a weight-loss, slimming, detox, appetite, craving, cure or "clinically proven" claim, which is never allowed. Remove it.';
+  // A company file never GAINS a banned claim (owner rulings 2026-10-01). The RESULTING text is
+  // judged, not the edit fragment: replacing "tx" with "tox" in "detx" makes "detox" (Codex r9).
+  {
+    const curNow = before ? before.current : (fs.existsSync(raw) ? readText(raw) : null);
+    const after = resultingText(tool, input, curNow);
+    const fragment = tool === 'Write' ? input.content
+      : tool === 'MultiEdit' ? (input.edits || []).map((e) => e.new_string || '').join(NL)
+        : (input.new_string || input.new_source || '');
+    const gained = (t) => {
+      if (typeof t !== 'string') return false;
+      const was = curNow ? (unify(curNow).match(new RegExp(BANNED_CLAIMS.source, 'gi')) || []).length : 0;
+      return (unify(t).match(new RegExp(BANNED_CLAIMS.source, 'gi')) || []).length > was;
+    };
+    if (gained(after) || (after === null && typeof fragment === 'string' && BANNED_CLAIMS.test(fragment))) {
+      return 'That text contains a weight-loss, slimming, detox, appetite, craving, cure or "clinically proven" claim, which is never allowed. Remove it.';
+    }
   }
   // `before` lets post.js judge a change a shell command already made, against the copy taken first.
   const exists = before ? before.exists : fs.existsSync(raw);
@@ -239,7 +249,7 @@ const SHELL_SCRIPT = /\.(sh|bash|ps1|psm1|bat|cmd)$/i;
 const REDIRECT = /(^|[^=\-<>])(&|\d)?>{1,2}(?![&>=])/;
 // Code that hides what it runs: blocked everywhere, Anton never needs it.
 const HIDDEN_CODE = /-e(nc|ncodedcommand)?\s+[a-z0-9+/=]{16,}|-encodedcommand|frombase64string|base64\s+(-d|--decode)|b64decode|\beval\(|\bexec\(|\biex\b|invoke-expression|(^|[\s;&|])(python3?|py|node|ruby|perl)\s+-(\s|$)|(^|[\s;&|])(python3?|py|node)\s*<|\b(bash|sh|zsh)\s+-s\b|-command\s+-(\s|$)|(^|[\s;&|(])(bash|sh|zsh|dash|ksh|pwsh|powershell|cmd)(\.exe)?\s*<|\|\s*(bash|sh|zsh|dash|ksh|pwsh|powershell|cmd|python3?|py|node|ruby|perl|php)(\.exe)?(\s|$)/i;
-const SCRIPT_FILE = /(?:"([^"]+\.(?:py|js|mjs|cjs|ts|ps1|psm1|sh|bash|bat|cmd|pl|rb|php))"|'([^']+\.(?:py|js|mjs|cjs|ts|ps1|psm1|sh|bash|bat|cmd|pl|rb|php))'|([^\s'"]+\.(?:py|js|mjs|cjs|ts|ps1|psm1|sh|bash|bat|cmd|pl|rb|php)))(?=$|[\s;&|)])/gi;
+const SCRIPT_FILE = /(?:"([^"]+\.(?:py|js|mjs|cjs|ts|ps1|psm1|sh|bash|bat|cmd|pl|rb|php))"|'([^']+\.(?:py|js|mjs|cjs|ts|ps1|psm1|sh|bash|bat|cmd|pl|rb|php))'|([^\s'"]+\.(?:py|js|mjs|cjs|ts|ps1|psm1|sh|bash|bat|cmd|pl|rb|php)))(?=$|[\s;&|)\],}])/gi;
 
 /**
  * The text of every script file a command runs, and of every script THOSE scripts name (three
@@ -250,6 +260,7 @@ function scriptsRun(cmd, cwd) {
   let text = '';
   let shellText = '';
   let unreadable = 0;
+  let tooDeep = 0; // scripts the guard cannot fully read: more than three levels down, or over 500 KB
   const seen = new Set();
   let frontier = [cmd];
   for (let depth = 0; depth < 4 && frontier.length; depth++) {
@@ -262,10 +273,11 @@ function scriptsRun(cmd, cwd) {
         const where = realLocation(file, cwd);
         if (seen.has(where)) continue;
         seen.add(where);
-        if (depth === 3) { unreadable++; continue; }
+        if (depth === 3) { tooDeep++; continue; }
         const body = readText(where);
         if (body === null) { unreadable++; continue; }
-        const part = body.slice(0, 500000);
+        if (body.length > 500000) { tooDeep++; continue; }
+        const part = body;
         text += NL + part;
         if (SHELL_SCRIPT.test(file)) shellText += NL + part;
         next.push(part);
@@ -273,7 +285,7 @@ function scriptsRun(cmd, cwd) {
     }
     frontier = next;
   }
-  return { text, shellText, unreadable };
+  return { text, shellText, unreadable, tooDeep };
 }
 
 /** Decide one shell command, including the scripts it runs. */
@@ -283,8 +295,13 @@ function checkBash(input, cwd, callId) {
     return 'Commands that hide or stream the code they run (encoded, eval/exec, stdin) are not allowed from this Claude. Write the script to a file first so it can be checked.';
   }
   const scripts = scriptsRun(cmd, cwd);
+  if (scripts.tooDeep > 0) {
+    return 'That chain of scripts is too deep or too large to check (more than three levels, or a script over 500 KB). Run the script directly.';
+  }
   const full = cmd + scripts.text;
-  const nfull = norm(full);
+  // Paths that only RESOLVE into a company folder (a symlink, "../..") count as naming it (Codex r9).
+  const named = foldersNamed(full, cwd, false);
+  const nfull = norm(full) + (named.length ? NL + named.map(norm).join(NL) : '');
   const inFolder = isProtected(norm(cwd || ''));
   // Anywhere, not only near company folders: hidden code could make a web request or reach a
   // company file the guard never sees (Codex round 7).

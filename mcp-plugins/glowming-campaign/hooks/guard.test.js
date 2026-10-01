@@ -294,7 +294,7 @@ const stdinPy = path.join(os.tmpdir(), 'gc-stdin-' + process.pid + '.py');
 fs.writeFileSync(stdinPy, 'import sys' + NL + 'exec(sys.stdin.read())' + NL);
 block('a scratch script that runs code from stdin, outside company folders', B('python "' + stdinPy + '" < /tmp/payload.txt'));
 fs.rmSync(stdinPy, { force: true });
-shell('a calendar hyperlink moved to another cell', B('python cal.py "' + files.calendar + '"'), () => makeXlsx(files.calendar, ['Mon 5 Oct', LINK, 'Shop'], [{ ref: 'A1', target: LINK }]), 'kept');
+shell('a calendar save that adds a hyperlink to a plain cell (benign)', B('python cal.py "' + files.calendar + '"'), () => makeXlsx(files.calendar, ['Mon 5 Oct', LINK, 'Shop'], [{ ref: 'A1', target: LINK }]), 'kept');
 makeXlsx(files.calendar, ['Mon 5 Oct', LINK, 'Shop'], [{ ref: 'A3', target: LINK }]);
 for (const k of ['calendar']) ORIGINAL[k] = fs.readFileSync(files[k]);
 {
@@ -333,7 +333,7 @@ fs.writeFileSync(outer, 'python "' + inner + '"' + NL);
 block('a script that starts another script making a web request', B('bash "' + outer + '"'));
 fs.rmSync(inner, { force: true }); fs.rmSync(outer, { force: true });
 shell('a calendar cell gains a claim written as XML character codes', B('python cal.py "' + files.calendar + '"'), () => makeXlsx(files.calendar, ['Mon 5 Oct', LINK, 'de&#116;ox']), 'undone');
-shell('an existing claim copied into a second cell', B('python cal.py "' + files.calendar + '"'), () => makeXlsx(files.calendar, ['Mon 5 Oct', LINK, 'x']), 'kept');
+shell('a calendar save that adds a plain cell (benign)', B('python cal.py "' + files.calendar + '"'), () => makeXlsx(files.calendar, ['Mon 5 Oct', LINK, 'x']), 'kept');
 {
   makeXlsx(files.calendar, ['Mon 5 Oct', LINK, 'Lose weight fast']);
   ORIGINAL.calendar = fs.readFileSync(files.calendar);
@@ -353,6 +353,42 @@ shell('an existing claim copied into a second cell', B('python cal.py "' + files
   assert.ok(same('calendar'), 'the calendar is back'); passed++;
   reset();
 }
+// Codex round 9.
+{
+  // A folder link (junction) whose own name says nothing about the company folders.
+  const link = path.join(os.tmpdir(), 'gc-link-' + process.pid);
+  try { fs.symlinkSync(shared, link, 'junction'); } catch (e) { /* no link support: skip */ }
+  if (fs.existsSync(link)) {
+    shell('a write through a folder link into the shared folder', B('python -c "open(\'linked/riaan.md\',\'w\').write(\'x\')"'.replace('linked', link.split(path.sep).join('/'))), w('riaan', 'changed'), STOPPED);
+    fs.rmSync(link, { recursive: false, force: true });
+  }
+}
+const child = path.join(os.tmpdir(), 'gc-child-' + process.pid + '.py');
+const parent = path.join(os.tmpdir(), 'gc-parent-' + process.pid + '.py');
+fs.writeFileSync(child, 'import urllib.request' + NL + 'urllib.request.urlopen("https://example.com")' + NL);
+fs.writeFileSync(parent, 'import subprocess' + NL + 'subprocess.run(["python3", "' + child.split(path.sep).join('/') + '"])' + NL);
+block('a script that starts another through subprocess.run([...])', B('python "' + parent + '"'));
+fs.rmSync(child, { force: true }); fs.rmSync(parent, { force: true });
+{
+  const chain = [0, 1, 2, 3, 4].map((i) => path.join(os.tmpdir(), 'gc-chain' + i + '-' + process.pid + '.py'));
+  chain.forEach((f, i) => fs.writeFileSync(f, i < 4 ? 'import subprocess' + NL + 'subprocess.run(["python", "' + chain[i + 1].split(path.sep).join('/') + '"])' + NL : 'print(1)' + NL));
+  block('a chain of scripts deeper than three levels, from a scratch folder', B('python "' + chain[0] + '"'));
+  chain.forEach((f) => fs.rmSync(f, { force: true }));
+}
+fs.writeFileSync(files.todo, '- [ ] Try our detx drink' + NL);
+block('an Edit fragment that turns existing text into a banned claim', E(files.todo, 'tx', 'tox'));
+allow('an Edit that fixes a typo without making a claim', E(files.todo, 'detx', 'tea'));
+reset();
+{
+  // A calendar cell written with single-quoted XML attributes is still read.
+  decide(B('python cal.py "' + files.calendar + '"'));
+  const sheetXml = '<?xml version="1.0"?><worksheet><sheetData><row r="1"><c r="A1" t="s"><v>0</v></c></row><row r="2"><c r="A2" t="s"><v>1</v></c></row><row r="3"><c r=\'A3\' t=\'inlineStr\'><is><t>detox</t></is></c></row></sheetData></worksheet>';
+  writeZip(files.calendar, [['[Content_Types].xml', '<?xml version="1.0"?><Types/>'], ['xl/sharedStrings.xml', '<?xml version="1.0"?><sst><si><t>Mon 5 Oct</t></si><si><t>' + LINK.replace(/&/g, '&amp;') + '</t></si></sst>'], ['xl/worksheets/sheet1.xml', sheetXml]]);
+  assert.notStrictEqual(post.verifyAll(), null, 'a claim in a single-quoted cell is caught'); passed++;
+  assert.ok(same('calendar'), 'the calendar is back'); passed++;
+  reset();
+}
+shell('a tracking cell given a click-through hyperlink to somewhere else', B('python cal.py "' + files.calendar + '"'), () => makeXlsx(files.calendar, ['Mon 5 Oct', LINK], [{ ref: 'A2', target: 'https://elsewhere.example/' }]), 'undone');
 
 // ---- 4. Connectors ------------------------------------------------------------------------------
 block('SharePoint delete', { tool_name: 'mcp__m365__sharepoint_delete_item', tool_input: {} });

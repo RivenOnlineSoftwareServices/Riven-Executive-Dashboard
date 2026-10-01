@@ -83,7 +83,7 @@ function judgeChange(entry, nowBuf, cwd) {
   const np = guard.norm(entry.path);
   if (np.endsWith('/' + guard.CALENDAR)) {
     try {
-      if (!calendarLinks.linksKept(calendarLinks.cellLinks(entry.backup), calendarLinks.cellLinks(entry.path))) {
+      if (!calendarLinks.linksKept(calendarLinks.cellTexts(entry.backup), calendarLinks.cellTexts(entry.path))) {
         return 'a tracking link in the posting calendar was changed, moved or removed.';
       }
       // Cell by cell: a claim already in one cell does not license copying it into another (Codex r8).
