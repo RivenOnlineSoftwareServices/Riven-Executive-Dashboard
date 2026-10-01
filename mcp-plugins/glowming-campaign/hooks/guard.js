@@ -274,7 +274,8 @@ function campaignLog(from, cwd) {
 
 /** Lower case, CRLF unified, runs of spaces/tabs collapsed: the form approvals are matched in. */
 function claimForm(s) {
-  return unify(String(s || '')).toLowerCase().replace(/[ \t]+/g, ' ');
+  // Non-breaking and figure spaces (pasted from Word or Teams) count as spaces (Kimi, P3).
+  return unify(String(s || '')).toLowerCase().replace(/[ \t\u00A0\u2007\u202F]+/g, ' ');
 }
 
 /** Every approved claim text (claim form, three words or more), built-in ones included. */
@@ -301,8 +302,14 @@ function sentenceUnits(text) {
   let heading = true; // a line ending in ':' ("CAPTION (post text):") is a heading: the next line starts anew
   for (const line of lines) {
     if (!line.trim()) { blocks.push(''); heading = true; continue; }
-    if (heading || FIELD_START.test(line)) blocks.push(line.replace(FIELD_START, ''));
-    else blocks[blocks.length - 1] += ' ' + line;
+    if (heading || FIELD_START.test(line)) {
+      // A "Label: " is judged as its OWN unit, never thrown away: "Detox: feel lighter." must
+      // still count "detox", and "Weight loss: <approved>." must not ride on the approval (Kimi,
+      // PR #17 rung 2, P1). Bullets and numbers carry no words, so only a label is kept.
+      const m = line.match(FIELD_START);
+      if (m && /:\s$/.test(m[1])) blocks.push(m[1].replace(/:\s$/, '') + '.');
+      blocks.push(line.replace(FIELD_START, ''));
+    } else blocks[blocks.length - 1] += ' ' + line;
     heading = /:\s*$/.test(line);
   }
   const units = [];
@@ -345,11 +352,14 @@ function unapprovedShellClaims(cmd, approvals) {
 const CLAIM_REFUSAL = 'That text contains a health, benefit, weight-loss, detox, appetite, craving or cure claim that Anton has not approved word for word. Show Anton the exact sentence and the risk; only if he approves it, append CLAIM APPROVED | <date time SAST> | "<the exact sentence>" to anton.md first, then try again.';
 // Health, benefit and medical wording beyond the banned list: new wording of this kind also needs
 // Anton's recorded approval (it was the prompt hook's job before; Codex PR #17 round 1, P1).
-const BENEFIT_CLAIMS = /\bgut\s+(health|cleans\w*)|\bbloat\w*|\bdigest\w*|\bimmun\w*|\benerg(y|ise|ize|ising|izing)\b|skin\s+glow|glowing\s+skin|anti[\s-]?(ageing|aging|inflammatory)|\b(prevents?|treats?|treatment\s+for)\b|\bdiabetes|\bdiseases?\b|blood\s+(sugar|pressure)|cholesterol|\bcleans(e|es|ing)\b|heart\s+health|\bjoints?\b|\bpain\b|\bsleep\w*|\binsomnia|\bmood\b|\bstress\b|\banxiety|\bdepress\w*|\bhormon\w*|\bliver\b|\bkidney|\bhair\s+(growth|loss)|\bwrinkl\w*|\binflamm\w*|\bcholest\w*|\bfertilit\w*|\bmemory\b|\bbrain\s+(health|function)|\bheal(th)?y\s+weight|\bwellbeing\s+benefits?|\b(boosts?|improves?|supports?|reduces?|relieves?|strengthens?|protects?|restores?)\s+(your\s+)?(the\s+)?(body|health|immune|gut|skin|energy|metabolism|sleep|mood|focus|heart|joints?|bones?|hair|nails|liver|digestion|circulation)\b/i;
-// What the word lists cannot see: a NEW health or benefit claim worded without any of these words.
-// A meaning-based check (the earlier prompt hook) cannot read Anton's approvals, so it would veto
-// exactly the wording the owner ruling allows him to approve; this list is the deterministic
-// substitute, and the heyu skill's rule (never PROPOSE a claim) covers the rest (PR #17).
+const BENEFIT_CLAIMS = /\bgut\s+(health|cleans\w*)|\bbloat\w*|\bdigest(ion|ive)\b|\bimmun\w*|\benerg(y|ise|ize|ising|izing)\b|skin\s+glow|glowing\s+skin|anti[\s-]?(ageing|aging|inflammatory)|\b(prevents?|treats?|treatment\s+for)\b|\bdiabetes|\bdiseases?\b|blood\s+(sugar|pressure)|cholesterol|\bcleans(e|es|ing)\b|heart\s+health|\bjoint\s+(pain|health|support)|\b(pain|joint)\s+relief|relieves?\s+pain|\bsleep\s+(quality|better|aid|support)|better\s+sleep|\binsomnia|\banxiety|\bdepress(ion|ive)|\bhormon\w*|\bliver\b|\bkidney|\bhair\s+(growth|loss)|\bwrinkl\w*|\binflamm\w*|\bfertilit\w*|\bbrain\s+(health|function)|\bheal(th)?y\s+weight|\bcancer|\btumou?r|\brisk\s+of\b|\bbreathe\s+(easier|better)|\b(boosts?|improves?|supports?|reduces?|relieves?|strengthens?|protects?|restores?|lowers?|balances?|regulates?|calms?)\s+(your\s+)?(the\s+)?(body|health|immune|gut|skin|energy|metabolism|sleep|mood|focus|heart|joints?|bones?|hair|nails|liver|digestion|circulation|stress|anxiety|blood|cholesterol|hormones?|risk)\b/i;
+// RESIDUAL GAP, stated plainly (PR #17): only LISTED words are enforced. A new claim worded with
+// none of them (for example "Twice as fast." on its own line after an approved sentence, or a
+// claim in words not listed here) is not caught by this guard; the heyu skill rule (Claude never
+// PROPOSES a claim) is then the only line. A meaning-based check cannot be a type:prompt hook (it
+// cannot read Anton's approvals, so it would veto exactly what the owner ruling allows). The
+// follow-up is a command hook that reads anton.md and asks `claude -p` to classify sentences, or a
+// type:agent hook, validated in Cowork 2.1.284 before it ships (BTM task owed).
 // Claims never allowed in anything this Claude writes or generates (owner rulings, 2026-10-01),
 // unless Anton approved the exact words (see approvedClaims above).
 const BANNED_CLAIMS = /weight[\s-]?(loss|control|management)|\bslimming|\bslim\s+down|fat[\s-]?(loss|burn)|(lose|losing|burn|burns|burning|melt)\s+(the\s+)?(fat|kg|kilos?|weight)|belly\s+fat|\d+\s*kg\b|\bdetox|appetite|craving|\bmetaboli|\bcures?\b|\bheals?\b|clinically\s+proven/i;

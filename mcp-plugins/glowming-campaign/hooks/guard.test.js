@@ -467,17 +467,30 @@ block('a Magnific prompt with an appetite claim', { tool_name: 'mcp__magnific__i
     B('echo \'Guaranteed to "Lose weight fast with Glowming".\' > /tmp/draft.txt', path.dirname(path.dirname(shared))));
   allow('an approved sentence in quotes, ending the sentence, is allowed',
     W(files.caption, caption.replace('Old post text.', '“Lose weight fast with Glowming.”')));
-  rec('app');
-  block('a tiny approval cannot mask a banned word', W(files.caption, caption.replace('Old post text.', 'It curbs your appetite.')));
   rec('Detox.');
   block('a one-word approval is ignored even as a whole sentence', W(files.caption, caption.replace('Old post text.', 'Detox.')));
   reset();
-  rec('Daily detox drink.'); rec('Daily detox drink. Reduced cravings all day.');
-  allow('overlapping approvals, shorter recorded first', W(files.caption, caption.replace('Old post text.', 'Daily detox drink. Reduced cravings all day.')));
+  rec('Daily detox drink. Reduced cravings all day.');
+  allow('a multi-sentence approval approves each of its sentences', W(files.caption, caption.replace('Old post text.', 'Reduced cravings all day. Daily detox drink.')));
   reset();
-  rec('Daily detox drink. Reduced cravings all day.'); rec('Daily detox drink.');
-  allow('overlapping approvals, longer recorded first', W(files.caption, caption.replace('Old post text.', 'Daily detox drink. Reduced cravings all day.')));
+  // Kimi PR #17 rung 2, P1: a "Label: " is judged, never discarded.
+  block('a claim word used as a field label is refused (no approvals)', W(files.caption, caption.replace('Old post text.', 'Detox: feel lighter this summer.')));
+  block('a benefit label is refused (no approvals)', W(files.caption, caption.replace('Old post text.', 'Improves digestion: new this season.')));
+  rec('Lose weight fast with Glowming.');
+  block('a claim label cannot ride on an approved sentence', W(files.caption, caption.replace('Old post text.', 'Weight loss: Lose weight fast with Glowming.')));
+  allow('a harmless label before an approved sentence is fine', W(files.caption, caption.replace('Old post text.', 'Caption: Lose weight fast with Glowming.')));
+  allow('an approved sentence pasted with non-breaking spaces still matches',
+    W(files.caption, caption.replace('Old post text.', 'Lose' + String.fromCharCode(160) + 'weight fast with Glowming.')));
   reset();
+  // Kimi P1 (question c): everyday planning and marketing words are not claims.
+  allow('a mood board is not a claim', W(files.caption, caption.replace('Old post text.', 'Mood board review with Zac.')));
+  allow('customer pain points are not a claim', W(files.caption, caption.replace('Old post text.', 'Pain points carousel for Step 2.')));
+  allow('a weekly digest is not a claim', W(files.caption, caption.replace('Old post text.', 'Weekly digest of advert results.')));
+  allow('a social idiom is not a claim', W(files.caption, caption.replace('Old post text.', 'Core memory: first sip on a Sleepy Sunday.')));
+  // Codex PR #17 round 3 strings: now listed.
+  block('a cancer-risk claim is refused', W(files.caption, caption.replace('Old post text.', 'Glowming lowers your risk of cancer.')));
+  block('a breathing claim is refused', W(files.caption, caption.replace('Old post text.', 'Glowming helps you breathe easier.')));
+  allow('the owner-approved live bubble (dots) is allowed', W(files.caption, caption.replace('Old post text.', 'Gut health · energy · immunity · skin glow')));
   block('an unapproved disease claim is refused', W(files.caption, caption.replace('Old post text.', 'Prevents diabetes.')));
   block('an unapproved benefit claim is refused', W(files.caption, caption.replace('Old post text.', 'Improves digestion.')));
   block('heart and joint claims are refused', W(files.caption, caption.replace('Old post text.', 'Supports heart health and reduces joint pain.')));

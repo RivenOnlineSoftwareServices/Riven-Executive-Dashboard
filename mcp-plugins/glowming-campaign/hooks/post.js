@@ -92,7 +92,7 @@ function judgeChange(entry, nowBuf, cwd) {
       const approvals = guard.approvedClaims(path.dirname(entry.path), cwd);
       for (const [cell, text] of calendarLinks.cellTexts(entry.path)) {
         if (was.get(cell) !== text && guard.unapprovedClaimCount(text, approvals, false) > 0) {
-          return 'a calendar cell now carries a weight-loss, detox, appetite, craving or cure claim Anton has not approved word for word.';
+          return 'a calendar cell now carries a health or benefit claim (for example weight loss, detox, cravings, digestion or immunity) that Anton has not approved word for word.';
         }
       }
       return null;
