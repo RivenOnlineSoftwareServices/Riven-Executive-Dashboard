@@ -1,0 +1,12 @@
+{
+  "$schema": "https://code.claude.com/schemas/plugin-schema.json",
+  "name": "glowming-campaign",
+  "displayName": "Glowming Summer Campaign",
+  "version": "0.1.0",
+  "description": "Work on the Glowming Summer Campaign 2026 directly with your own Claude: where things stand, advert results, captions, the posting calendar, plans and approvals, and Zac (designs, renders, videos) and Heyu (wording, compliance, advert advice) for Glowming. Changes go through safe, checked steps and are logged; nothing is ever deleted. Works with the shared project folder and the synced SharePoint campaign folder. For Riven OSS / Glowming owners only.",
+  "author": {
+    "name": "Riven OSS",
+    "email": "riaan@riven.co.za"
+  },
+  "keywords": ["glowming", "campaign", "zac", "heyu", "adverts", "riven"]
+}

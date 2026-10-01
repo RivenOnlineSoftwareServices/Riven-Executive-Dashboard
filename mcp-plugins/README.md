@@ -9,13 +9,14 @@ installs survive a Claude Desktop restart (unlike local-folder installs).
 | `pulse` | bundled here (`mcp-plugins/pulse`) | Glowming Pulse analytics API | `snapshot_today` / `digest_this_week` / `mart` / `mart_meta` + the **pulse-brief** skill |
 | `collective` | this repo (`mcp-plugins/collective`) | the retrieval gateway `POST /api/search` | `collective_search` / `ask_persona` + the **ask-collective** skill |
 | `exec-workspace` | this repo (`mcp-plugins/exec-workspace`) | nothing — skills only, no token | **exec-setup** / **exec-guide** / **exec-optimize** / **exec-remind** |
+| `glowming-campaign` | this repo (`mcp-plugins/glowming-campaign`) | nothing — skills + a guard hook, no token | **campaign** / **zac** / **heyu** for the Glowming Summer Campaign 2026 (owners on the campaign only) |
 
 Both are zero-dependency Node stdio MCP servers (Node 18+ for global `fetch`).
 
 Every plugin here is a **local `./mcp-plugins/*` source**, and must stay that way:
 an entry the installer's client cannot read fails validation, and that failure
 takes down the whole marketplace sync rather than the single entry. Executives add
-ONE marketplace (`riven-exec`) and get all three plugins.
+ONE marketplace (`riven-exec`) and get every plugin they install from it.
 
 ## Install in Cowork
 
@@ -26,6 +27,8 @@ ONE marketplace (`riven-exec`) and get all three plugins.
    an executive token is scoped to Glowming knowledge only. Leave `gateway_url`
    at its default.
 4. Install **exec-workspace** — no token needed.
+   Campaign owners only: also install **glowming-campaign** (no token). It needs OneDrive syncing
+   the shared campaign folders and, for renders, the Magnific connector on claude.ai.
 5. Reload Cowork → `mcp__pulse__*` + `mcp__collective__*` tools attach, and the
    `pulse-brief` + `ask-collective` skills are available.
 
