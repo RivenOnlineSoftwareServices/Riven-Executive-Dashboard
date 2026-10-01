@@ -74,7 +74,7 @@ If `anton.md` already has a `GUARD |` line, skip this step.
 
 | Anton says | Do |
 |---|---|
-| "How are the adverts doing?" | If the `pulse` tools are installed, read `mart advert_performance` (one row per advert per day, keyed by the advert code in the link) and add it up per advert. Otherwise use the numbers in Riaan's newest END block and say how old they are. Ask the `heyu` skill for what to change, with a reason. |
+| "How are the adverts doing?" | If the `pulse` tools are installed, read `mart advert_performance` (one row per advert per day, keyed by the advert code in the link) the way the `pulse-brief` skill says: a stated period (default the last 7 days), enough rows fetched to cover it, totals per advert, and the date range named. Otherwise use the numbers in Riaan's newest END block and say how old they are. Ask the `heyu` skill for what to change, with a reason. |
 | "Change the words / caption of <advert>" | Caption action in `references/edit-pathway.md`: Heyu checks the words first, the tracking line stays exactly as it is. |
 | "Make a new advert / story version / video" | Use the `zac` skill. Renders follow `references/edit-pathway.md` (new files only, logged). |
 | "Move / add a post on the calendar" | Calendar action in `references/edit-pathway.md`. |

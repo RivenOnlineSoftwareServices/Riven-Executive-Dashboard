@@ -40,7 +40,8 @@ The ten marts: `daily_snapshot`, `checkout_funnel`, `customer_clv`,
 `GJ26 | I1-B | feed`), `advert_code` (e.g. `i1-b`, the same code as the link's `utm_content`),
 `gj26_named`, campaign and ad set names, `spend`, `impressions`, `reach`, `link_clicks`,
 `purchases`, `purchase_value` (purchases may be null on a day with none). Newest days first;
-about 20-40 rows a day, so `limit` 300 covers roughly the last week and a half.
+about 20-40 rows a day, so `limit` 1000 covers roughly the last 25-50 days. Never assume a
+limit covers a period: check the oldest `date` returned.
 
 ## Question → call mapping
 
@@ -52,7 +53,7 @@ about 20-40 rows a day, so `limit` 300 covers roughly the last week and a half.
 | "Where are we losing sales / funnel?" | `mart checkout_funnel` — walk view_item → add_to_cart → begin_checkout → add_payment → purchase, and name the biggest drop-off as a %. |
 | "How's our reputation / reviews?" | `mart review_velocity` — count + average rating, and the trend. |
 | "Ad spend / ROAS / are ads running?" | `mart ad_performance` — spend, ROAS, and `effective_status` (say plainly whether anything is actively delivering). |
-| "How are the adverts doing? / which advert works best? / how is A5-B doing?" | `mart advert_performance` (limit 300) — add up per `advert_code` over the days asked about (default: since the advert started), give spend, link clicks, cost per click and purchases per advert, best and worst first. Say the newest day may still be filling in. |
+| "How are the adverts doing? / which advert works best? / how is A5-B doing?" | `mart advert_performance` — pick the period first (default: the last 7 days; "since it started" only when asked). Fetch with `limit` 1000; if the OLDEST `date` returned is newer than the start of the period, fetch again with a higher limit (up to 10000) until it is covered. Add up per `advert_code` over that period only, give spend, link clicks, cost per click and purchases per advert, best and worst first, and always say the exact date range the totals cover. Say the newest day may still be filling in. |
 | "Customer value / repeat buyers" | `mart customer_clv`. |
 | "Stock / what's low?" | `mart inventory_health`. |
 | "Is the data current?" | `mart_meta <name>` — report the age / `data_through_ts`. |
