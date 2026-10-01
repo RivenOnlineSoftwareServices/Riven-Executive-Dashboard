@@ -441,6 +441,8 @@ block('a Magnific prompt with an appetite claim', { tool_name: 'mcp__magnific__i
   block('adjacent quoted strings cannot extend an approval', B('echo "' + APPROVED + '"" twice as fast." > /tmp/draft.txt', base));
   block('separate quoted arguments cannot extend an approval', B('echo "' + APPROVED + '" "twice as fast." > /tmp/draft.txt', base));
   block('a leading argument cannot prefix an approval', B('echo "Guaranteed: " "' + APPROVED + '" > /tmp/draft.txt', base));
+  block('an escaped semicolon is not a separator', B('echo Guaranteed:' + String.fromCharCode(92) + '; echo "' + APPROVED + '" > /tmp/draft.txt', base));
+  block('a second command before the approved echo gets no exemption', B('cd /tmp && echo "' + APPROVED + '" > /tmp/draft.txt', base));
   allow('echo with a flag and the approved sentence alone is fine', B('echo -n "' + APPROVED + '" > /tmp/draft.txt', base));
   allow('Anton-approved words in a Magnific prompt', { tool_name: 'mcp__magnific__images_generate', tool_input: { prompt: 'Pouch on a table with this text. ' + APPROVED }, cwd: base });
   block('approved words glued into a longer prompt sentence are refused', { tool_name: 'mcp__magnific__images_generate', tool_input: { prompt: 'pouch on a table, text: ' + APPROVED }, cwd: base });

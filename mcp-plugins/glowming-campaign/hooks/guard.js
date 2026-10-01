@@ -351,9 +351,10 @@ function unapprovedShellClaims(cmd, approvals) {
   const rest = src.replace(/"((?:[^"\\]|\\.)*)"|'([^']*)'/g, (m, dq, sq, at) => {
     const before = src.slice(0, at);
     const after = src.slice(at + m.length);
-    // ...and BEFORE it only the command word and its flags (echo -n "..."), so no other argument
-    // can be glued on in front either (Codex PR #17 round 5: echo "Guaranteed: " "<approved>").
-    const alone = /(^|[;&|(\n])\s*[\w.-]+(\s+-[A-Za-z-]+)*\s+$/.test(before) && /^\s*($|[;|&>)]|\d>)/.test(after);
+    // ...and no shell structure is INFERRED at all (Codex PR #17 rounds 5-6: a leading argument,
+    // then an escaped \; that looks like a separator): the exemption applies only when the WHOLE
+    // command is exactly  echo|printf [flags] "<one string>" [> or >> one file]  - nothing else.
+    const alone = /^\s*(echo|printf)(\s+-[A-Za-z]+)*\s+$/.test(before) && /^\s*(>>?\s*[^\s;&|<>`$(){}]+)?\s*$/.test(after);
     n += unapprovedClaimCount(dq !== undefined ? dq : sq, alone ? approvals : [], false);
     return ' ; ';
   });
