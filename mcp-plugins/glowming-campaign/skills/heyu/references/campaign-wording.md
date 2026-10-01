@@ -92,11 +92,11 @@ Compliance-checked. Ask Anton which pieces he has approved before offering any o
 
 ### B. For affiliates to share with their followers (templates with [NAME] and [CODE])
 
-These are templates the affiliate personalises and sends herself. Every one keeps its #ad or commission disclosure.
+These are templates the affiliate personalises and sends herself. Every one keeps its #ad AND commission disclosure.
 
 **B1. WhatsApp to a friend**
 
-> Hey! You know I've been drinking Glowming 😊 I'd love you to try it. Use my code **[CODE]** at glowming.co.za and you get **R55 off your first order**. It's a drink you mix from a sachet and sip through your day: Pomegranate, Café Latte, Choco or Milky Matcha. Gut health, energy, immunity and skin glow. Tell me which flavour you pick! (Full disclosure: I earn a commission when you order with my code.)
+> Hey! You know I've been drinking Glowming 😊 I'd love you to try it. Use my code **[CODE]** at glowming.co.za and you get **R55 off your first order**. It's a drink you mix from a sachet and sip through your day: Pomegranate, Café Latte, Choco or Milky Matcha. Gut health, energy, immunity and skin glow. Tell me which flavour you pick! #ad (Full disclosure: I earn a commission when you order with my code.)
 
 **B2. Instagram / Facebook post caption**
 

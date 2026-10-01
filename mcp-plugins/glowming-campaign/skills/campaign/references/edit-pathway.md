@@ -17,6 +17,15 @@ this whenever he worries about a change.
 If anything is unclear, or a file looks different from what is described here, stop and ask
 Anton, or add a question for Riaan in `anton.md`. Do not improvise.
 
+## Action 0: Anton's own to-do list and work folder
+
+Files: `todo-anton.md`, and files under `work/anton/` in the shared project folder.
+
+- Follow the five steps above for every change Anton asks for.
+- `todo-anton.md`: add an item or tick one; never delete an item or rewrite someone's words.
+- `work/anton/`: new files any time; an existing text file (notes, drafts) may change; a picture,
+  video, PDF or other non-text file is never overwritten: save the next version instead.
+
 ## Action 1: change a caption
 
 File: `01 Ready to post/<Step folder>/<advert folder>/caption.txt`.
@@ -88,4 +97,4 @@ Folder: the advert's own folder under `01 Ready to post/<Step folder>/<advert fo
 Read-only. If Anton asks for a change elsewhere (the website, Meta, emails to customers, Riaan's
 files, the README, competition rules), write it as a request to Riaan's side in `anton.md` under
 `## Questions` and tell Anton it is with Riaan. Anton's own emails to a person follow the email
-row in `SKILL.md` (a draft; sent only when he says "send it" for that email).
+row in `SKILL.md` (a draft that Anton sends himself).

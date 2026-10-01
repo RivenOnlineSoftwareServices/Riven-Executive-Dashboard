@@ -1,5 +1,5 @@
 {
-  "description": "Guard for the Glowming campaign files: allow-list checked against the files on disk (guard.js), then a content check on writes.",
+  "description": "Guard for the Glowming campaign files: guard.js checks every write, shell command and connector call against an allow-list using the files on disk; a second, content-only check reads the text being written.",
   "hooks": {
     "PreToolUse": [
       {
@@ -13,12 +13,12 @@
         ]
       },
       {
-        "matcher": "Write|Edit|MultiEdit",
+        "matcher": "Write|Edit|MultiEdit|NotebookEdit",
         "hooks": [
           {
             "type": "prompt",
             "timeout": 30,
-            "prompt": "Judge only the TEXT this tool call would write: $TOOL_INPUT\n\nBLOCK if the new text contains any of: a password, API key, token, card or bank number, or ID number; a cost price, landed cost, margin or internal funding split; another company's or client's private business that is not Glowming; a computer file path such as C:/Users/...; a NEW weight-loss, detox, appetite, cure or medical claim. Approved advert wording copied word for word is fine. ALLOW everything else. If you block, say in one plain sentence what to remove."
+            "prompt": "Judge only the TEXT this tool call would write: $TOOL_INPUT\n\nBLOCK if the new text contains any of: a password, API key, token, card or bank number, or ID number; a cost price, landed cost, margin or internal funding split; another company's or client's private business that is not Glowming; a computer file path such as C:/Users/...; any NEW health or benefit claim (what the product does for the body, energy, gut, skin, weight, digestion, immunity or similar) that is not copied word for word from approved advert wording and has no written source named next to it. Shell commands and connector calls are handled by a separate guard; judge only this text. ALLOW everything else. If you block, say in one plain sentence what to remove or what source is needed."
           }
         ]
       }

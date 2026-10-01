@@ -16,8 +16,8 @@ Anton Schulz is an owner of Glowming SA. He is not technical. Make everything fe
 a capable assistant: plain English, short answers, one question at a time, no file paths unless he
 asks, no jargon. Do the steps for him; never ask him to edit a file or run a command.
 
-Read `references/campaign-rules.md` before any change. Read `references/edit-pathway.md` before
-touching any file outside Anton's own files.
+Read `references/campaign-rules.md` and `references/edit-pathway.md` before any change, including
+changes to Anton's own files.
 
 ## 1. Find the folders (first time, then remember)
 
@@ -57,16 +57,19 @@ into any shared file; the folder NAMES above are enough to find them again next 
 | "I approve <thing>" / "Approved" | Write it under `## Decisions` in his next END block with his exact words and the date, and add a line to `todo-anton.md` ticked done. Riaan's side picks it up at its next start. |
 | "Ask Riaan …" / "Tell Riaan …" | Add it under `## Questions` in `anton.md` (and to `todo-anton.md` if it is a task for Riaan's side). Tell Anton Riaan's side sees it at its next start, and that for anything urgent he can also email or phone Riaan. |
 | "Switch an advert on/off", "change the budget" | Explain that this is done by hand in Meta Ads Manager (by Anton or Riaan); give him the exact advert names from `references/campaign-rules.md`. Cowork never changes Meta. |
-| "Send an email to …" | Emails from Anton to a person (Riaan, a host, a supplier): write it as a draft in Anton's own mailbox; send it only if Anton says "send it" for that email. Emails to CUSTOMERS (newsletters, the R50 reminder, launch emails) are sent by Riaan's side: write the request in `anton.md` under `## Questions`. |
+| "Send an email to …" | Emails from Anton to a person (Riaan, a host, a supplier): write it as a draft in Anton's own mailbox and tell him it is waiting for him to press Send (this Claude never sends; the guard refuses it). Emails to CUSTOMERS (newsletters, the R50 reminder, launch emails) are sent by Riaan's side: write the request in `anton.md` under `## Questions`. |
 | A general question about the campaign | Answer from the shared folder, the campaign rules, and the `collective` tools (Alice for Glowming facts). Say "I don't know" rather than guess. |
 
-## 4. Anton's own files (always allowed)
+## 4. Anton's own files
 
-- `anton.md` is APPEND-ONLY: add new lines at the end; never change or remove an earlier line
-  (the guard refuses it). After appending, re-open the file and check the earlier text is intact.
-- `todo-anton.md`: add items, tick items (`- [x] <item> (done YYYY-MM-DD)`); never remove an item.
-- `work/anton/`: new files freely; an existing picture or video is never overwritten (new version
-  instead).
+- **Automatic log lines** (no question needed): the `START` line, the `END` block, and the `CHANGE`
+  and `RENDER` lines the pathway itself writes. These are appended to the end of `anton.md`;
+  never change or remove an earlier line (the guard refuses it). After appending, re-open the file
+  and check the earlier text is intact.
+- **Anything Anton asks you to change** in `todo-anton.md` or `work/anton/` follows Action 0 in
+  `references/edit-pathway.md` (show, propose, ask, save, verify, log). In `todo-anton.md` items are
+  added or ticked (`- [x] <item> (done YYYY-MM-DD)`), never removed. In `work/anton/` a picture,
+  video or other non-text file is never overwritten (save a new version).
 Never edit `riaan.md`, `todo-riaan.md`, `README.md`, or files someone else added.
 
 ## 5. End (when Anton says he is done, or before a long pause)
@@ -88,6 +91,6 @@ Leave out empty sections. Then remind Anton to let OneDrive finish syncing (gree
 
 - Delete, rename or move any file or folder. Overwrite an approved final picture or video.
 - Edit any file outside the list in section 4 and `references/edit-pathway.md`.
-- Change Meta adverts, budgets or audiences; change the website; send emails without his "send it".
+- Change Meta adverts, budgets or audiences; change the website; send any email or message (drafts only).
 - Put passwords, card or bank details, ID numbers or cost prices in any file.
 - Write as a host, customer or influencer.

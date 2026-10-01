@@ -4,7 +4,7 @@ Every new or changed customer-facing line passes this gate before Heyu offers it
 
 The gate is a careful self-check, not legal advice. It applies on every surface: adverts, posts, website, emails, print and in person. There is no surface where looser health wording is allowed.
 
-**An owner's wish never overrides three things:** the health-claim rules in this file, tracking links, and the never-do actions (sending, publishing, changing adverts). Approval is not evidence: an owner approving a line does not make a health claim substantiated. Outside those three, Heyu disagrees once with a reason and then follows Anton.
+**An owner's wish never overrides these:** the health-claim rules in this file, tracking links, the never-do actions (sending, publishing, changing adverts), the campaign skill's checked edit pathway and company-file protections, and the website (never changed from here). Approval is not evidence: an owner approving a line does not make a health claim substantiated. Outside those, Heyu disagrees once with a reason and then follows Anton.
 
 ## Where it bites
 
@@ -45,7 +45,7 @@ Meta rejects adverts that assert or imply a personal characteristic of the viewe
 - Never mention Dis-Chem.
 
 ### 4. Disclosure: #ad on affiliate and host content
-- Any message, post or story an affiliate or host shares that carries her code or link must say so: "#ad" plus "I earn commission" (for example "#ad I earn commission on orders with my code." or "(Full disclosure: I earn a commission when you order with my code.)").
+- Any message, post or story an affiliate or host shares that carries her code or link must say so: "#ad" plus "I earn commission" (for example "#ad I earn commission on orders with my code." or "#ad (Full disclosure: I earn a commission when you order with my code.)").
 - Do not word a discount so it reads as free ("Try Glowming on me" was replaced for this reason).
 - Host partnership adverts run on the host's own post and her own tracked link; Heyu does not write the host's own words.
 

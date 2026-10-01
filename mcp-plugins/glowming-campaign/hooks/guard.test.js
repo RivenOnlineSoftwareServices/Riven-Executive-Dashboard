@@ -105,5 +105,28 @@ block('SharePoint delete', { tool_name: 'mcp__m365__sharepoint_delete_item', too
 block('move a file through a connector', { tool_name: 'mcp__m365__sharepoint_move_item', tool_input: {} });
 allow('search through a connector', { tool_name: 'mcp__m365__sharepoint_search', tool_input: {} });
 
+// Round 2: path tricks, shell from inside the folder, script writes, connector effects.
+block('.. out of work/anton onto riaan.md', W(path.join(shared, 'work', 'anton', '..', '..', 'riaan.md'), 'x'));
+block('relative path resolved against a company folder', { tool_name: 'Write', tool_input: { file_path: 'riaan.md', content: 'x' }, cwd: shared });
+block('rm with the shell already inside the folder', { tool_name: 'Bash', tool_input: { command: 'rm caption.txt' }, cwd: advert });
+block('python open(..., "w") on a caption', B('python -c "open(r\'' + files.caption + '\', \'w\').write(\'x\')"'));
+block('cp over a plan', B('cp /tmp/x.docx "' + files.plan + '"'));
+allow('a script saving the posting calendar', B('python edit_calendar.py && python -c "wb.save(r\'' + files.calendar + '\')"'));
+allow('a NEW .svg in work/anton', W(path.join(shared, 'work', 'anton', 'old.svg'), 'y'));
+fs.writeFileSync(path.join(shared, 'work', 'anton', 'old.svg'), 'x');
+block('overwrite an existing .svg in work/anton (exists)', W(path.join(shared, 'work', 'anton', 'old.svg'), 'y'));
+fs.writeFileSync(path.join(shared, 'work', 'anton', 'notes2.md'), 'x');
+allow('edit an existing text note in work/anton', W(path.join(shared, 'work', 'anton', 'notes2.md'), 'y'));
+block('send mail through Outlook', { tool_name: 'mcp__ms365__outlook_send_mail', tool_input: {} });
+block('reply (which sends) through Gmail', { tool_name: 'mcp__gmail__reply', tool_input: {} });
+allow('create an email draft', { tool_name: 'mcp__ms365__outlook_create_draft', tool_input: {} });
+allow('create a reply draft', { tool_name: 'mcp__ms365__outlook_create_reply_draft', tool_input: {} });
+block('upload over a SharePoint file', { tool_name: 'mcp__ms365__sharepoint_upload_file', tool_input: {} });
+block('Graph PATCH through Lokka', { tool_name: 'mcp__Lokka-Microsoft__Lokka-Microsoft', tool_input: { method: 'patch' } });
+allow('Graph GET through Lokka', { tool_name: 'mcp__Lokka-Microsoft__Lokka-Microsoft', tool_input: { method: 'get' } });
+allow('Magnific image generation', { tool_name: 'mcp__magnific__images_generate', tool_input: {} });
+allow('Magnific upload of a source photo', { tool_name: 'mcp__magnific__creations_upload_image', tool_input: {} });
+allow('Magnific stock download', { tool_name: 'mcp__magnific__stock_download', tool_input: {} });
+
 fs.rmSync(root, { recursive: true, force: true });
 console.log(passed + ' passed');

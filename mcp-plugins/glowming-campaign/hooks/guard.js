@@ -29,6 +29,7 @@
 'use strict';
 
 const fs = require('fs');
+const path = require('path');
 
 const SHARED = '_riven-claude/glowming summer campaign/';
 const CAMPAIGN = 'marketing/2026 summer campaign/';
@@ -44,6 +45,27 @@ const PROTECTED_MARKERS = [
   'sa operations',
 ];
 const MEDIA = /\.(png|jpe?g|webp|gif|mp4|mov|m4v|psd|ai|pdf)$/i;
+// Existing files in work/anton/ may change only if they are plain text; anything else gets a new version.
+const EDITABLE_TEXT = /\.(md|txt|csv|json|html?)$/i;
+
+/**
+ * The real absolute location of a path: relative paths against the session folder,
+ * '..' segments resolved, and the nearest existing folder's links followed, so
+ * 'work/anton/../../riaan.md' is judged as riaan.md.
+ */
+function realLocation(p, cwd) {
+  let abs = path.resolve(cwd || process.cwd(), String(p || ''));
+  let probe = abs;
+  const tail = [];
+  while (!fs.existsSync(probe)) {
+    const parent = path.dirname(probe);
+    if (parent === probe) return abs;
+    tail.unshift(path.basename(probe));
+    probe = parent;
+  }
+  try { abs = path.join(fs.realpathSync(probe), ...tail); } catch (e) { /* keep the resolved path */ }
+  return abs;
+}
 
 /** Lower-case, forward slashes, collapsed doubles: the form every check uses. */
 function norm(p) {
@@ -96,10 +118,11 @@ function lockedCaptionLines(text) {
 }
 
 /** Decide one file write. Returns null to allow, or a plain-English reason to block. */
-function checkWrite(tool, input) {
-  const raw = input.file_path || input.notebook_path || '';
+function checkWrite(tool, input, cwd) {
+  const given = input.file_path || input.notebook_path || '';
+  if (!given) return null;
+  const raw = realLocation(given, cwd);
   const np = norm(raw);
-  if (!np) return null;
   if (!isProtected(np)) return null; // a temporary working file outside the company folders
   const exists = fs.existsSync(raw);
   const current = exists ? readText(raw) : null;
@@ -115,7 +138,7 @@ function checkWrite(tool, input) {
     }
     if (shared === 'todo-anton.md') return null;
     if (shared.startsWith('work/anton/')) {
-      if (exists && MEDIA.test(np)) return 'That picture or video already exists. Save the new one under a new name (next version number) instead.';
+      if (exists && !EDITABLE_TEXT.test(np)) return 'That file already exists. Save the new one under a new name (next version number) instead.';
       return null;
     }
     return 'Only anton.md, todo-anton.md and work/anton/ may be changed in the shared project folder. To change anything else, ask Riaan\'s side in anton.md under ## Questions.';
@@ -143,32 +166,54 @@ function checkWrite(tool, input) {
   return 'That folder is outside the campaign files this Claude may change. Ask Riaan\'s side in anton.md under ## Questions.';
 }
 
-const DESTRUCTIVE = /(^|[\s;&|(])(rm|del|erase|rmdir|rd|mv|move|ren|rename|unlink|shred|truncate)(\s|$)|remove-item|move-item|rename-item|clear-content|set-content|out-file|copy-item|robocopy|xcopy|shutil\.(rmtree|move)|os\.(remove|unlink|rename|replace|rmdir)|\.unlink\(|\.rename\(|\.rmdir\(|git\s+(clean|checkout|reset|rm|mv)|(^|[^>0-9])>(?![>&])/i;
+const DESTRUCTIVE_SHELL = /(^|[\s;&|(])(rm|del|erase|rmdir|rd|mv|move|ren|rename|unlink|shred|truncate)(\s|$)|remove-item|move-item|rename-item|clear-content|set-content|out-file|copy-item|robocopy|xcopy|shutil\.(rmtree|move)|os\.(remove|unlink|rename|replace|rmdir)|\.unlink\(|\.rename\(|\.rmdir\(|git\s+(clean|checkout|reset|rm|mv)|(^|[^>0-9])>(?![>&])|open\([^)]*['"][wax]b?\+?['"]|write_(text|bytes)\(|\.save\(|\.to_(csv|excel)\(|writefile|appendfile|copyfile|\btee\b|\bsed\s+-i|\bcp\s|\bcopy\s/i;
 
 /** Decide one shell command. Commands that touch a company folder AND could delete, move or overwrite are blocked. */
-function checkBash(input) {
+function checkBash(input, cwd) {
   const cmd = String(input.command || '');
-  const nc = norm(cmd);
-  if (!isProtected(nc)) return null;
-  if (DESTRUCTIVE.test(cmd)) {
+  // The posting calendar is the one company file a script may save (SharePoint keeps its versions).
+  // Strip each whole path that ends in the calendar (back to its opening quote), so its folder
+  // names do not count; any OTHER company path left in the command still does.
+  const withoutCalendar = norm(cmd).replace(/[^'"]*02 posting calendar\.xlsx/g, '');
+  const touches = isProtected(withoutCalendar) || isProtected(norm(cwd || ''));
+  if (!touches) return null;
+  if (DESTRUCTIVE_SHELL.test(cmd)) {
     return 'Shell commands may not delete, move, rename or overwrite files in the company folders. Make the change with the campaign skill\'s checked steps instead.';
   }
   return null;
 }
 
 /** Connector calls that delete, trash, move or rename are blocked outright. */
-function checkMcp(tool) {
-  return /(delete|trash|remove|move|rename|purge|empty)/i.test(tool)
-    ? 'Deleting, moving or renaming through a connector is not allowed from this Claude. Ask Riaan\'s side if something must go.'
-    : null;
+function checkMcp(tool, input) {
+  // mcp__<server>__<action>: the server says WHOSE system it is, the action says what it does.
+  // Judging them apart stops 'sharepoint_search' reading as 'share' and 'downloads' as 'ads'.
+  const parts = tool.toLowerCase().split('__');
+  const server = parts.length > 2 ? parts.slice(1, -1).join('__') : '';
+  const act = parts[parts.length - 1];
+  if (/(delete|trash|remove|move|rename|purge|empty)/.test(act)) {
+    return 'Deleting, moving or renaming through a connector is not allowed from this Claude. Ask Riaan\'s side if something must go.';
+  }
+  const company = /(sharepoint|onedrive|outlook|mail|gmail|teams|calendar|graph|lokka|microsoft|m365|meta|facebook|instagram|shopify)/.test(server + ' ' + act)
+    || /(^|[_-])ads?($|[_-])/.test(server);
+  // A generic Graph caller names no verb: anything but a read is a change.
+  if (/lokka|graph/.test(server) && String((input && input.method) || 'get').toLowerCase() !== 'get') {
+    return 'Changing anything in Microsoft 365 through a connector is not allowed from this Claude; it may only read.';
+  }
+  if (company && /(send|forward|reply|respond)/.test(act) && !/draft/.test(act)) {
+    return 'This Claude writes emails and messages as drafts only; Anton presses Send himself.';
+  }
+  if (company && /(upload|update|create|copy|write|edit|patch|post|publish|(^|_)share(_|$)|(^|_)set_)/.test(act) && !/draft/.test(act)) {
+    return 'Changing files, adverts or settings through a connector is not allowed from this Claude. Save files in the synced folders through the checked steps, or ask Riaan\'s side.';
+  }
+  return null;
 }
 
 function decide(event) {
   const tool = String(event.tool_name || '');
   const input = event.tool_input || {};
-  if (/^(Write|Edit|MultiEdit|NotebookEdit)$/.test(tool)) return checkWrite(tool, input);
-  if (tool === 'Bash' || tool === 'PowerShell') return checkBash(input);
-  if (tool.startsWith('mcp__')) return checkMcp(tool);
+  if (/^(Write|Edit|MultiEdit|NotebookEdit)$/.test(tool)) return checkWrite(tool, input, event.cwd);
+  if (tool === 'Bash' || tool === 'PowerShell') return checkBash(input, event.cwd);
+  if (tool.startsWith('mcp__')) return checkMcp(tool, input);
   return null;
 }
 
