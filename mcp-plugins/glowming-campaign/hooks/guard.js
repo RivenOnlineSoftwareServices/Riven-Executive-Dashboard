@@ -167,13 +167,15 @@ function checkWrite(tool, input, cwd, before) {
     const fragment = tool === 'Write' ? input.content
       : tool === 'MultiEdit' ? (input.edits || []).map((e) => e.new_string || '').join(NL)
         : (input.new_string || input.new_source || '');
+    const approvals = approvedClaims(path.dirname(raw), cwd);
+    const isLog = np.endsWith(SHARED + 'anton.md'); // (`after` is a local string in this block)
     const gained = (t) => {
       if (typeof t !== 'string') return false;
-      const was = curNow ? (unify(curNow).match(new RegExp(BANNED_CLAIMS.source, 'gi')) || []).length : 0;
-      return (unify(t).match(new RegExp(BANNED_CLAIMS.source, 'gi')) || []).length > was;
+      const was = curNow ? unapprovedClaimCount(curNow, approvals, isLog) : 0;
+      return unapprovedClaimCount(t, approvals, isLog) > was;
     };
-    if (gained(after) || (after === null && typeof fragment === 'string' && BANNED_CLAIMS.test(fragment))) {
-      return 'That text contains a weight-loss, slimming, detox, appetite, craving, cure or "clinically proven" claim, which is never allowed. Remove it.';
+    if (gained(after) || (after === null && typeof fragment === 'string' && unapprovedClaimCount(fragment, approvals, isLog) > 0)) {
+      return CLAIM_REFUSAL;
     }
   }
   // `before` lets post.js judge a change a shell command already made, against the copy taken first.
@@ -240,7 +242,55 @@ const CODE_WRITE = /set-content|add-content|out-file|copy-item|open\([^)]*['"][w
 // cover him), and every way of changing adverts, the shop or sending email would go through one,
 // so the whole class is refused rather than guessing which methods write (Codex round 5).
 const NET_CALL = /\b(curl|wget|iwr|irm|invoke-restmethod|invoke-webrequest)\b|\b(requests|httpx|aiohttp|urllib3?)\b|urlopen|http\.client|\bfetch\s*\(|\bwebsocket|\baxios\b|xmlhttprequest|\bsmtplib\b|\bsendmail\b|send_mail\(|net\.webclient|\bsocket\.|require\(\s*['"](node:)?(https?|http2|net|tls|dgram)['"]\s*\)|from\s+['"](node:)?(https?|http2|net|tls|dgram)['"]|\bhttps?\.(request|get)\(|graph\.facebook\.com|graph\.microsoft\.com|myshopify\.com|api\.resend\.com|api\.sendgrid\.com/i;
-// Claims that are never allowed in anything this Claude writes or generates (owner rulings, 2026-10-01).
+// Approved claims (Riaan's standing rule, 2026-10-01: "Yes it actually does override when coming
+// from Anton"). Anton's explicit approval of EXACT words overrides the claim rules. His Claude
+// records each approval as one appended line in anton.md:
+//   CLAIM APPROVED | <YYYY-MM-DD HH:MM SAST> | "<the exact words>"
+// A banned phrase is then allowed only INSIDE approved words; anything else is still refused, so
+// this Claude can never introduce a claim Anton did not approve word for word.
+const APPROVAL_LINE = /^CLAIM APPROVED \|[^|]*\|\s*"(.+)"\s*$/;
+const ANTON_LOG_PATHS = [
+  ['ROSS - Documents', '_Riven-Claude', 'Glowming Summer Campaign', 'anton.md'],
+  ['_Riven-Claude', 'Glowming Summer Campaign', 'anton.md'],
+  ['Glowming Summer Campaign', 'anton.md'],
+  ['anton.md'],
+];
+
+/** Every approved claim text (lower case) from the anton.md nearest to `from` or the session folder. */
+function approvedClaims(from, cwd) {
+  const starts = [from, cwd || process.cwd()].filter(Boolean);
+  for (const start of starts) {
+    let dir = path.resolve(start);
+    for (let i = 0; i < 12; i++) {
+      for (const parts of ANTON_LOG_PATHS) {
+        const p = path.join(dir, ...parts);
+        if (parts.length === 1 && path.basename(dir).toLowerCase() !== 'glowming summer campaign') continue;
+        const text = fs.existsSync(p) ? readText(p) : null;
+        if (text !== null) {
+          return unify(text).split(NL).map((l) => (l.trim().match(APPROVAL_LINE) || [])[1])
+            .filter((t) => t && t.trim().length >= 3).map((t) => t.trim().toLowerCase());
+        }
+      }
+      const parent = path.dirname(dir);
+      if (parent === dir) break;
+      dir = parent;
+    }
+  }
+  return [];
+}
+
+/** How many banned phrases `text` holds OUTSIDE approved words. `isLog` also skips approval lines. */
+function unapprovedClaimCount(text, approvals, isLog) {
+  let t = unify(String(text || ''));
+  if (isLog) t = t.split(NL).filter((l) => !APPROVAL_LINE.test(l.trim())).join(NL);
+  t = t.toLowerCase();
+  for (const a of approvals) t = t.split(a).join(' ');
+  return (t.match(new RegExp(BANNED_CLAIMS.source, 'gi')) || []).length;
+}
+
+const CLAIM_REFUSAL = 'That text contains a weight-loss, slimming, detox, appetite, craving, cure or "clinically proven" claim that Anton has not approved word for word. Show Anton the exact words and the risk; only if he approves them, append CLAIM APPROVED | <date time SAST> | "<exact words>" to anton.md first, then try again.';
+// Claims never allowed in anything this Claude writes or generates (owner rulings, 2026-10-01),
+// unless Anton approved the exact words (see approvedClaims above).
 const BANNED_CLAIMS = /weight[\s-]?(loss|control|management)|\bslimming|\bslim\s+down|fat[\s-]?(loss|burn)|(lose|losing|burn|burns|burning|melt)\s+(the\s+)?(fat|kg|kilos?|weight)|belly\s+fat|\d+\s*kg\b|\bdetox|appetite|craving|\bmetaboli|\bcures?\b|\bheals?\b|clinically\s+proven/i;
 // Shell scripts are judged for redirects too (Python and JS are not: ">" there is not a redirect).
 const SHELL_SCRIPT = /\.(sh|bash|ps1|psm1|bat|cmd)$/i;
@@ -319,8 +369,8 @@ function checkBash(input, cwd, callId) {
   if (NET_CALL.test(full)) {
     return 'Web requests from the shell or a script are not allowed from this Claude (adverts, the shop and email are never changed this way). Use a connector to read, or ask Riaan\'s side.';
   }
-  if ((redirects || CODE_WRITE.test(full)) && BANNED_CLAIMS.test(full)) {
-    return 'That text contains a weight-loss, slimming, detox, appetite, craving, cure or "clinically proven" claim, which is never allowed. Remove it.';
+  if ((redirects || CODE_WRITE.test(full)) && unapprovedClaimCount(full, approvedClaims(null, cwd), false) > 0) {
+    return CLAIM_REFUSAL;
   }
   if (inFolder && scripts.unreadable > 0) {
     return 'A script was started from a company folder but could not be read, so it was blocked to be safe.';
@@ -468,8 +518,8 @@ function checkMcp(tool, input, cwd) {
     return 'Deleting, moving or renaming through a connector is not allowed from this Claude. Ask Riaan\'s side if something must go.';
   }
   const strings = stringsIn(input, []);
-  if (!READ_ACTION.test(act) && BANNED_CLAIMS.test(strings.join(NL))) {
-    return 'That request contains a weight-loss, detox, appetite, cure or "clinically proven" claim, which is never allowed. Remove it.';
+  if (!READ_ACTION.test(act) && unapprovedClaimCount(strings.join(NL), approvedClaims(null, cwd), false) > 0) {
+    return CLAIM_REFUSAL;
   }
   if (SAFE_SERVERS.test(server)) return null;
   // A generic Graph caller names no verb: only an explicit GET is a read.
@@ -503,7 +553,7 @@ function decide(event) {
   return null;
 }
 
-module.exports = { decide, checkWrite, checkNewFile, isTextFile, norm, sha1, walkFiles, snapId, CALENDAR, BANNED_CLAIMS };
+module.exports = { decide, checkWrite, checkNewFile, isTextFile, norm, sha1, walkFiles, snapId, CALENDAR, BANNED_CLAIMS, approvedClaims, unapprovedClaimCount };
 
 if (require.main === module) {
   let buf = '';

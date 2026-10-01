@@ -415,6 +415,41 @@ allow('Magnific upload of a source photo', { tool_name: 'mcp__magnific__creation
 block('a Magnific prompt with a detox claim', { tool_name: 'mcp__magnific__images_generate', tool_input: { prompt: 'detox drink on a beach' } });
 block('a Magnific prompt with an appetite claim', { tool_name: 'mcp__magnific__images_generate', tool_input: { prompt: 'drink that reduces your appetite' } });
 
+// ---- Anton's approved claims (Riaan's standing rule, 2026-10-01) --------------------------------
+// Anton's explicit approval of EXACT words overrides the claim rules. The approval lives in
+// anton.md as CLAIM APPROVED | <time> | "<words>"; only those words pass, nothing else does.
+{
+  const APPROVED = 'For bloating relief, reduced cravings, gut cleansing, fat burning, immunity and skin glow.';
+  const approvalLine = 'CLAIM APPROVED | 2026-10-01 15:40 SAST | "' + APPROVED + '"';
+  const approve = () => fs.appendFileSync(files.anton, approvalLine + NL);
+  const base = path.dirname(path.dirname(shared)); // the folder that holds ROSS - Documents
+
+  allow('append a CLAIM APPROVED line to anton.md', W(files.anton, fs.readFileSync(files.anton, 'utf8') + approvalLine + NL));
+  block('an approval-shaped line in a caption does not approve itself',
+    W(files.caption, caption.replace('Old post text.', approvalLine)));
+  block('without an approval, the approved words are still refused', W(files.caption, caption.replace('Old post text.', APPROVED)));
+
+  approve();
+  allow('Anton-approved words in a caption (Write)', W(files.caption, caption.replace('Old post text.', APPROVED)));
+  allow('Anton-approved words, different case (Edit)', E(files.caption, 'Old post text.', APPROVED.toUpperCase()));
+  block('a DIFFERENT claim is still refused after an approval', W(files.caption, caption.replace('Old post text.', 'Lose weight fast.')));
+  block('approved words PLUS an unapproved claim are refused', W(files.caption, caption.replace('Old post text.', APPROVED + ' Lose weight fast.')));
+  block('part of the approved words reworded into a new claim is refused', W(files.caption, caption.replace('Old post text.', 'Reduced cravings guaranteed.')));
+  allow('a shell-written draft with Anton-approved words', B('echo "' + APPROVED + '" > /tmp/draft.txt', base));
+  block('a shell-written draft with an unapproved claim', B('echo "Lose weight fast" > /tmp/draft.txt', base));
+  allow('Anton-approved words in a Magnific prompt', { tool_name: 'mcp__magnific__images_generate', tool_input: { prompt: 'pouch on a table, text: ' + APPROVED }, cwd: base });
+  block('an unapproved claim in a Magnific prompt is still refused', { tool_name: 'mcp__magnific__images_generate', tool_input: { prompt: 'detox drink on a beach' }, cwd: base });
+  reset();
+
+  // The approval is recorded BEFORE the command (and so before the snapshot), as it is in use.
+  approve(); ORIGINAL.anton = fs.readFileSync(files.anton);
+  shell('Anton-approved words in a calendar cell are kept', B('python cal.py "' + files.calendar + '"'),
+    () => makeXlsx(files.calendar, ['Mon 5 Oct', LINK, APPROVED]), 'kept');
+  approve(); ORIGINAL.anton = fs.readFileSync(files.anton);
+  shell('an unapproved claim in a calendar cell is still undone', B('python cal.py "' + files.calendar + '"'),
+    () => makeXlsx(files.calendar, ['Mon 5 Oct', LINK, 'Lose weight fast with Glowming']), 'undone');
+}
+
 fs.rmSync(calPy, { force: true });
 // Nothing may be left behind for a later post.js run to act on.
 post.verifyAll();

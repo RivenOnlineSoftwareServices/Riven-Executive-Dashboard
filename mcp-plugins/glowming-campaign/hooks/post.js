@@ -88,9 +88,11 @@ function judgeChange(entry, nowBuf, cwd) {
       }
       // Cell by cell: a claim already in one cell does not license copying it into another (Codex r8).
       const was = calendarLinks.cellTexts(entry.backup);
+      // Anton's approved words are allowed (Riaan's standing rule, 2026-10-01); see guard.approvedClaims.
+      const approvals = guard.approvedClaims(path.dirname(entry.path), cwd);
       for (const [cell, text] of calendarLinks.cellTexts(entry.path)) {
-        if (was.get(cell) !== text && guard.BANNED_CLAIMS.test(text)) {
-          return 'a calendar cell now carries a weight-loss, detox, appetite, craving or cure claim.';
+        if (was.get(cell) !== text && guard.unapprovedClaimCount(text, approvals, false) > 0) {
+          return 'a calendar cell now carries a weight-loss, detox, appetite, craving or cure claim Anton has not approved word for word.';
         }
       }
       return null;

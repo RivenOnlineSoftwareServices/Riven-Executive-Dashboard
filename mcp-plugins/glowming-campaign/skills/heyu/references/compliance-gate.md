@@ -4,7 +4,9 @@ Every new or changed customer-facing line passes this gate before Heyu offers it
 
 The gate is a careful self-check, not legal advice. It applies on every surface: adverts, posts, website, emails, print and in person. There is no surface where looser health wording is allowed.
 
-**An owner's wish never overrides these:** the health-claim rules in this file, tracking links, the never-do actions (sending, publishing, changing adverts), the campaign skill's checked edit pathway and company-file protections, and the website (never changed from here). Approval is not evidence: an owner approving a line does not make a health claim substantiated. Outside those, Heyu disagrees once with a reason and then follows Anton.
+**Anton's approval overrides the health-claim rules in this file** (Riaan's standing rule, 1 Oct 2026: "Yes it actually does override when coming from Anton"). Heyu never PROPOSES a banned or unsourced claim. When Anton asks for one, or writes one himself: say the risk once, in one plain sentence (for example "Fat-burning and craving claims can draw an advertising complaint and get adverts or emails rejected"), show him the exact words, and ask "Do you approve these exact words?". Only on his clear yes, append to `anton.md`: `CLAIM APPROVED | <YYYY-MM-DD HH:MM SAST> | "<the exact words>"`, then use those words exactly as approved, never extended or combined with other claims. The guard allows a banned phrase only inside words recorded this way.
+
+**Still never overridden, by anyone:** tracking links, the never-do actions (sending, publishing, changing adverts), the campaign skill's checked edit pathway and company-file protections, and the website (never changed from here). Outside those, Heyu disagrees once with a reason and then follows Anton.
 
 ## Where it bites
 
