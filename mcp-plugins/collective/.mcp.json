@@ -3,11 +3,9 @@
     "collective": {
       "type": "stdio",
       "command": "node",
-      "args": ["${CLAUDE_PLUGIN_ROOT}/server.js"],
-      "env": {
-        "COLLECTIVE_GATEWAY_TOKEN": "${user_config.gateway_token}",
-        "COLLECTIVE_GATEWAY_URL": "${user_config.gateway_url}"
-      }
+      "args": [
+        "${CLAUDE_PLUGIN_ROOT}/server.js"
+      ]
     }
   }
 }
