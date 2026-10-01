@@ -25,15 +25,20 @@ const post = require(process.env.POST_PATH || './post.js');
 const calendarLinks = require(path.join(__dirname, 'calendar-links.js'));
 
 /** A minimal .xlsx (stored zip): shared strings plus sheet1 with one cell per string in column A. */
-function makeXlsx(file, cells) {
+function makeXlsx(file, cells, links) {
+  links = links || [];
   const sheet = '<?xml version="1.0"?><worksheet><sheetData>'
     + cells.map((c, i) => '<row r="' + (i + 1) + '"><c r="A' + (i + 1) + '" t="s"><v>' + i + '</v></c></row>').join('')
-    + '</sheetData></worksheet>';
+    + '</sheetData>'
+    + (links.length ? '<hyperlinks>' + links.map((l, i) => '<hyperlink ref="' + l.ref + '" r:id="rId' + (i + 1) + '"/>').join('') + '</hyperlinks>' : '')
+    + '</worksheet>';
+  const rels = '<?xml version="1.0"?><Relationships>' + links.map((l, i) => '<Relationship Id="rId' + (i + 1) + '" Type="hyperlink" Target="' + l.target.replace(/&/g, '&amp;') + '" TargetMode="External"/>').join('') + '</Relationships>';
   const entries = [
     ['[Content_Types].xml', '<?xml version="1.0"?><Types/>'],
     ['xl/sharedStrings.xml', '<?xml version="1.0"?><sst>' + cells.map((c) => '<si><t>' + c.replace(/&/g, '&amp;') + '</t></si>').join('') + '</sst>'],
     ['xl/worksheets/sheet1.xml', sheet],
   ];
+  if (links.length) entries.push(['xl/worksheets/_rels/sheet1.xml.rels', rels]);
   const locals = [];
   const centrals = [];
   let offset = 0;
@@ -119,7 +124,7 @@ const B = (command, cwd) => ({ tool_name: 'Bash', tool_input: { command }, cwd }
  * would do (effect), then run post.js. `outcome` checks the files afterwards.
  * Returns 'blocked', 'undone' (post.js reported and repaired) or 'kept'.
  */
-function shell(why, ev, effect, expect) {
+function shell(why, ev, effect, expect, after) {
   const decision = decide(ev);
   let result = 'blocked';
   if (decision === null) {
@@ -129,6 +134,7 @@ function shell(why, ev, effect, expect) {
   const ok = Array.isArray(expect) ? expect.includes(result) : result === expect;
   assert.ok(ok, why + ': expected ' + expect + ', got ' + result + (decision ? ' (' + decision + ')' : ''));
   passed++;
+  if (after) { after(); passed++; }
   reset();
   return result;
 }
@@ -213,20 +219,20 @@ fs.writeFileSync(calPy, 'import openpyxl' + NL + 'wb = openpyxl.load_workbook("0
 // ---- 3. Shell, judged by what it DID ------------------------------------------------------------
 const w = (k, data) => () => fs.writeFileSync(files[k], data);
 shell('redirect over a caption', B('echo hi > "' + files.caption + '"'), w('caption', 'hi'), STOPPED);
-shell('>> append onto a caption', B('printf "x" >> "' + files.caption + '"'), () => fs.appendFileSync(files.caption, 'x'), STOPPED);
-assert.ok(same('caption'), 'caption back after the append'); passed++;
+shell('>> append onto a caption', B('printf "x" >> "' + files.caption + '"'), () => fs.appendFileSync(files.caption, 'x'), STOPPED,
+  () => assert.ok(same('caption'), 'caption back after the append'));
 shell('Add-Content onto riaan.md', { tool_name: 'PowerShell', tool_input: { command: 'Add-Content "' + files.riaan + '" "x"' } }, () => fs.appendFileSync(files.riaan, 'x'), STOPPED);
 shell('cp over a plan', B('cp /tmp/x.docx "' + files.plan + '"'), w('plan', 'other'), STOPPED);
 shell('python os.open/os.write over the competition rules', B('python -c "import os; f=os.open(r\'' + files.rules + '\', os.O_WRONLY|os.O_TRUNC); os.write(f, b\'x\')"'), w('rules', 'x'), STOPPED);
 shell('a delete the text did not reveal', B('python tidy.py ' + JSON.stringify(advert)), () => fs.rmSync(files.png), STOPPED);
 {
   // The repair itself, checked byte for byte.
-  decide(B('ls "' + advert + '"'));
+  decide(B('python fix.py "' + advert + '"'));
   fs.writeFileSync(files.png, 'tampered');
   assert.notStrictEqual(post.verifyAll(), null, 'tampering is reported'); passed++;
   assert.ok(same('png'), 'the picture is back exactly'); passed++;
   reset();
-  decide(B('ls "' + advert + '"'));
+  decide(B('python fix.py "' + advert + '"'));
   fs.rmSync(files.png);
   assert.notStrictEqual(post.verifyAll(), null, 'a deletion is reported'); passed++;
   assert.ok(fs.existsSync(files.png) && same('png'), 'the deleted picture is back exactly'); passed++;
@@ -234,8 +240,8 @@ shell('a delete the text did not reveal', B('python tidy.py ' + JSON.stringify(a
 }
 shell('a new render saved by a script', B('python render.py "' + advert + '"'), () => fs.writeFileSync(path.join(advert, 'A5-B story 9x16 v3 2026-10-02.png'), 'new'), 'kept');
 assert.ok(fs.existsSync(path.join(advert, 'A5-B story 9x16 v3 2026-10-02.png')), 'the new render stays'); passed++;
-shell('a new file in the competition rules folder', B('python make.py "' + rulesDir + '"'), () => fs.writeFileSync(path.join(rulesDir, 'new.md'), 'x'), 'undone');
-assert.ok(!fs.existsSync(path.join(rulesDir, 'new.md')), 'the forbidden new file is removed'); passed++;
+shell('a new file in the competition rules folder', B('python make.py "' + rulesDir + '"'), () => fs.writeFileSync(path.join(rulesDir, 'new.md'), 'x'), 'undone',
+  () => assert.ok(!fs.existsSync(path.join(rulesDir, 'new.md')), 'the forbidden new file is removed'));
 shell('a caption headline changed by sed -i', B('sed -i "s/Old headline/New headline/" "' + files.caption + '"'), w('caption', caption.replace('Old headline', 'New headline')), 'kept');
 shell('a caption tracking link changed by sed -i', B('sed -i "s/a5-b/a5-c/" "' + files.caption + '"'), w('caption', caption.split('a5-b').join('a5-c')), 'undone');
 shell('a todo link changed by a script while a copy is kept', B('python t.py "' + shared + '"'), w('todo', '- [ ] a' + NL + '- [ ] post A5 with ' + LINK2 + NL + LINK + NL), 'undone');
@@ -243,11 +249,51 @@ shell('the calendar saved with its links in place', B('python cal.py "' + files.
 shell('the calendar saved with a link lost', B('python cal.py "' + files.calendar + '"'), () => makeXlsx(files.calendar, ['Mon 5 Oct', 'gone']), 'undone');
 shell('the calendar saved with a link moved to another cell', B('python cal.py "' + files.calendar + '"'), () => makeXlsx(files.calendar, ['Mon 5 Oct', 'x', LINK]), 'undone');
 shell('the calendar replaced by something that is not a workbook', B('python cal.py "' + files.calendar + '"'), w('calendar', 'junk'), 'undone');
-shell('another workbook overwritten by the calendar script, from inside the folder', B('python "' + calPy + '"', camp), w('other', 'overwritten'), 'undone');
-assert.ok(same('other'), 'the other workbook is back'); passed++;
-shell('a stray new workbook in the campaign folder', B('python "' + calPy + '"', camp), () => fs.writeFileSync(path.join(camp, 'copy.xlsx'), 'x'), 'undone');
-assert.ok(!fs.existsSync(path.join(camp, 'copy.xlsx')), 'the stray workbook is removed'); passed++;
+shell('another workbook overwritten by the calendar script, from inside the folder', B('python "' + calPy + '"', camp), w('other', 'overwritten'), 'undone',
+  () => assert.ok(same('other'), 'the other workbook is back'));
+shell('a stray new workbook in the campaign folder', B('python "' + calPy + '"', camp), () => fs.writeFileSync(path.join(camp, 'copy.xlsx'), 'x'), 'undone',
+  () => assert.ok(!fs.existsSync(path.join(camp, 'copy.xlsx')), 'the stray workbook is removed'));
 assert.ok(calendarLinks.linksKept(calendarLinks.cellLinks(files.calendar), calendarLinks.cellLinks(files.calendar)), 'a calendar keeps its own links'); passed++;
+// Codex round 7.
+const packs = path.join(camp, '03 Affiliate packs');
+fs.mkdirSync(packs, { recursive: true });
+fs.writeFileSync(path.join(packs, 'notes.txt'), 'pack notes');
+shell('a protected file in a sub-folder, script names only the campaign root', B('python tidy.py "' + camp + '"'), () => fs.writeFileSync(path.join(packs, 'notes.txt'), 'overwritten'), 'undone',
+  () => assert.strictEqual(fs.readFileSync(path.join(packs, 'notes.txt'), 'utf8'), 'pack notes', 'the sub-folder file is back'));
+shell('a forbidden file in a NEW sub-folder', B('python tidy.py "' + camp + '"'), () => { fs.mkdirSync(path.join(camp, '07 New'), { recursive: true }); fs.writeFileSync(path.join(camp, '07 New', 'x.md'), 'x'); }, 'undone',
+  () => assert.ok(!fs.existsSync(path.join(camp, '07 New', 'x.md')), 'the file in the new sub-folder is removed'));
+block('fetch with a space before the bracket', B('node -e "fetch (\'https://example.com\')"'));
+const stdinPy = path.join(os.tmpdir(), 'gc-stdin-' + process.pid + '.py');
+fs.writeFileSync(stdinPy, 'import sys' + NL + 'exec(sys.stdin.read())' + NL);
+block('a scratch script that runs code from stdin, outside company folders', B('python "' + stdinPy + '" < /tmp/payload.txt'));
+fs.rmSync(stdinPy, { force: true });
+shell('a calendar hyperlink moved to another cell', B('python cal.py "' + files.calendar + '"'), () => makeXlsx(files.calendar, ['Mon 5 Oct', LINK, 'Shop'], [{ ref: 'A1', target: LINK }]), 'kept');
+makeXlsx(files.calendar, ['Mon 5 Oct', LINK, 'Shop'], [{ ref: 'A3', target: LINK }]);
+for (const k of ['calendar']) ORIGINAL[k] = fs.readFileSync(files[k]);
+{
+  decide(B('python cal.py "' + files.calendar + '"'));
+  makeXlsx(files.calendar, ['Mon 5 Oct', LINK, 'Shop'], [{ ref: 'A1', target: LINK }]);
+  assert.notStrictEqual(post.verifyAll(), null, 'a hyperlink moved to another cell is caught'); passed++;
+  assert.ok(same('calendar'), 'the calendar with its hyperlink in place is back'); passed++;
+  reset();
+}
+shell('a calendar cell gains a banned claim', B('python cal.py "' + files.calendar + '"'), () => makeXlsx(files.calendar, ['Mon 5 Oct', LINK, 'Lose weight fast with Glowming']), 'undone');
+{
+  // Two overlapping tool calls: checking one must not consume the other's copy.
+  decide({ tool_name: 'Bash', tool_input: { command: 'python a.py "' + advert + '"' }, tool_use_id: 'toolu_A' });
+  decide({ tool_name: 'Bash', tool_input: { command: 'python b.py "' + plans + '"' }, tool_use_id: 'toolu_B' });
+  assert.strictEqual(post.verifyAll('toolu_A'), null, 'call A finished cleanly'); passed++;
+  fs.writeFileSync(files.plan, 'tampered by call B');
+  assert.notStrictEqual(post.verifyAll('toolu_B'), null, 'call B is still checked against its own copy'); passed++;
+  assert.ok(same('plan'), 'the plan is back'); passed++;
+  reset();
+}
+{
+  const count = () => fs.readdirSync(os.tmpdir()).filter((f) => f.startsWith('glowming-snap-')).length;
+  const n0 = count();
+  allow('a plain read in a company folder', B('ls "' + advert + '" | head -5'));
+  assert.strictEqual(count(), n0, 'a plain read takes no copy'); passed++;
+}
 
 // ---- 4. Connectors ------------------------------------------------------------------------------
 block('SharePoint delete', { tool_name: 'mcp__m365__sharepoint_delete_item', tool_input: {} });

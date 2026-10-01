@@ -54,38 +54,53 @@ function textOf(xml) {
   return [...xml.matchAll(/<t(?:\s[^>]*)?>([\s\S]*?)<\/t>/g)].map((m) => decodeXml(m[1])).join('');
 }
 
-/** Map of "sheet!REF" -> cell text and "sheet#rId" -> hyperlink target, for every one holding utm_. */
-function cellLinks(file) {
+/**
+ * Every cell's text, keyed "sheet!REF" (shared strings, inline strings, values and formulas), and
+ * every cell hyperlink keyed "sheet!REF#link", resolved through the sheet's relationships so a
+ * hyperlink is tied to its CELL, not to its relationship id (Codex round 7).
+ */
+function cellTexts(file) {
   const parts = zipParts(fs.readFileSync(file));
   const sst = parts['xl/sharedStrings.xml']
     ? [...parts['xl/sharedStrings.xml'].matchAll(/<si>([\s\S]*?)<\/si>/g)].map((m) => textOf(m[1]))
     : [];
   const out = new Map();
   for (const [name, xml] of Object.entries(parts)) {
-    if (/^xl\/worksheets\/[^/]+\.xml$/.test(name)) {
-      for (const m of xml.matchAll(/<c\s+([^>]*?)(?:\/>|>([\s\S]*?)<\/c>)/g)) {
-        const attrs = m[1];
-        const inner = m[2] || '';
-        const ref = (attrs.match(/\br="([A-Z]+\d+)"/) || [])[1];
-        if (!ref) continue;
-        const type = (attrs.match(/\bt="([^"]+)"/) || [])[1];
-        const v = (inner.match(/<v>([\s\S]*?)<\/v>/) || [])[1];
-        const f = (inner.match(/<f[^>]*>([\s\S]*?)<\/f>/) || [])[1] || '';
-        let text = '';
-        if (type === 's' && v !== undefined) text = sst[Number(v)] || '';
-        else if (type === 'inlineStr') text = textOf(inner);
-        else if (v !== undefined) text = decodeXml(v);
-        const all = text + (f ? ' =' + decodeXml(f) : '');
-        if (/utm_/i.test(all)) out.set(name + '!' + ref, all);
-      }
-    } else if (/^xl\/worksheets\/_rels\/[^/]+\.rels$/.test(name)) {
-      for (const m of xml.matchAll(/<Relationship\s+([^>]*?)\/?>/g)) {
-        const id = (m[1].match(/\bId="([^"]+)"/) || [])[1];
-        const target = decodeXml((m[1].match(/\bTarget="([^"]+)"/) || [])[1] || '');
-        if (id && /utm_/i.test(target)) out.set(name + '#' + id, target);
-      }
+    if (!/^xl\/worksheets\/[^/]+\.xml$/.test(name)) continue;
+    for (const m of xml.matchAll(/<c\s+([^>]*?)(?:\/>|>([\s\S]*?)<\/c>)/g)) {
+      const attrs = m[1];
+      const inner = m[2] || '';
+      const ref = (attrs.match(/\br="([A-Z]+\d+)"/) || [])[1];
+      if (!ref) continue;
+      const type = (attrs.match(/\bt="([^"]+)"/) || [])[1];
+      const v = (inner.match(/<v>([\s\S]*?)<\/v>/) || [])[1];
+      const f = (inner.match(/<f[^>]*>([\s\S]*?)<\/f>/) || [])[1] || '';
+      let text = '';
+      if (type === 's' && v !== undefined) text = sst[Number(v)] || '';
+      else if (type === 'inlineStr') text = textOf(inner);
+      else if (v !== undefined) text = decodeXml(v);
+      out.set(name + '!' + ref, text + (f ? ' =' + decodeXml(f) : ''));
+    }
+    const relsName = name.replace(/^xl\/worksheets\//, 'xl/worksheets/_rels/') + '.rels';
+    const targets = {};
+    for (const m of (parts[relsName] || '').matchAll(/<Relationship\s+([^>]*?)\/?>/g)) {
+      const id = (m[1].match(/\bId="([^"]+)"/) || [])[1];
+      if (id) targets[id] = decodeXml((m[1].match(/\bTarget="([^"]+)"/) || [])[1] || '');
+    }
+    for (const m of xml.matchAll(/<hyperlink\s+([^>]*?)\/?>/g)) {
+      const ref = (m[1].match(/\bref="([^"]+)"/) || [])[1];
+      const id = (m[1].match(/\br:id="([^"]+)"/) || [])[1];
+      const loc = decodeXml((m[1].match(/\blocation="([^"]+)"/) || [])[1] || '');
+      if (ref) out.set(name + '!' + ref + '#link', (id ? targets[id] || '' : '') + (loc ? '#' + loc : ''));
     }
   }
+  return out;
+}
+
+/** The cells and cell hyperlinks that hold a utm_ tracking link. */
+function cellLinks(file) {
+  const out = new Map();
+  for (const [k, v] of cellTexts(file)) if (/utm_/i.test(v)) out.set(k, v);
   return out;
 }
 
@@ -95,4 +110,4 @@ function linksKept(before, after) {
   return true;
 }
 
-module.exports = { cellLinks, linksKept, zipParts };
+module.exports = { cellLinks, cellTexts, linksKept, zipParts };

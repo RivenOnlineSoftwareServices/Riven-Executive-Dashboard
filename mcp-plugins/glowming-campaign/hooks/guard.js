@@ -229,7 +229,7 @@ const CODE_WRITE = /set-content|add-content|out-file|copy-item|open\([^)]*['"][w
 // Any web request from the shell or a script. Anton never needs one (connectors and web reading
 // cover him), and every way of changing adverts, the shop or sending email would go through one,
 // so the whole class is refused rather than guessing which methods write (Codex round 5).
-const NET_CALL = /\b(curl|wget|iwr|irm|invoke-restmethod|invoke-webrequest)\b|\b(requests|httpx|aiohttp|urllib3?)\b|urlopen|http\.client|\bfetch\(|\baxios\b|xmlhttprequest|\bsmtplib\b|\bsendmail\b|send_mail\(|net\.webclient|\bsocket\.|require\(\s*['"](node:)?(https?|http2|net|tls|dgram)['"]\s*\)|from\s+['"](node:)?(https?|http2|net|tls|dgram)['"]|\bhttps?\.(request|get)\(|graph\.facebook\.com|graph\.microsoft\.com|myshopify\.com|api\.resend\.com|api\.sendgrid\.com/i;
+const NET_CALL = /\b(curl|wget|iwr|irm|invoke-restmethod|invoke-webrequest)\b|\b(requests|httpx|aiohttp|urllib3?)\b|urlopen|http\.client|\bfetch\s*\(|\bwebsocket|\baxios\b|xmlhttprequest|\bsmtplib\b|\bsendmail\b|send_mail\(|net\.webclient|\bsocket\.|require\(\s*['"](node:)?(https?|http2|net|tls|dgram)['"]\s*\)|from\s+['"](node:)?(https?|http2|net|tls|dgram)['"]|\bhttps?\.(request|get)\(|graph\.facebook\.com|graph\.microsoft\.com|myshopify\.com|api\.resend\.com|api\.sendgrid\.com/i;
 // Claims that are never allowed in anything this Claude writes or generates (owner rulings, 2026-10-01).
 const BANNED_CLAIMS = /weight[\s-]?(loss|control|management)|\bslimming|\bslim\s+down|fat[\s-]?(loss|burn)|(lose|losing|burn|burns|burning|melt)\s+(the\s+)?(fat|kg|kilos?|weight)|belly\s+fat|\d+\s*kg\b|\bdetox|appetite|craving|\bmetaboli|\bcures?\b|\bheals?\b|clinically\s+proven/i;
 // Shell scripts are judged for redirects too (Python and JS are not: ">" there is not a redirect).
@@ -259,7 +259,7 @@ function scriptsRun(cmd, cwd) {
 }
 
 /** Decide one shell command, including the scripts it runs. */
-function checkBash(input, cwd) {
+function checkBash(input, cwd, callId) {
   const cmd = String(input.command || '');
   if (HIDDEN_CODE.test(cmd)) {
     return 'Commands that hide or stream the code they run (encoded, eval/exec, stdin) are not allowed from this Claude. Write the script to a file first so it can be checked.';
@@ -268,8 +268,10 @@ function checkBash(input, cwd) {
   const full = cmd + scripts.text;
   const nfull = norm(full);
   const inFolder = isProtected(norm(cwd || ''));
-  if (HIDDEN_CODE.test(scripts.text) && (isProtected(nfull) || inFolder)) {
-    return 'That script hides the code it runs (eval/exec/encoded), so it cannot be checked against the campaign folders.';
+  // Anywhere, not only near company folders: hidden code could make a web request or reach a
+  // company file the guard never sees (Codex round 7).
+  if (HIDDEN_CODE.test(scripts.text)) {
+    return 'That script hides or streams the code it runs (eval/exec/encoded/stdin), so it cannot be checked. Write the code itself into the script.';
   }
   if ((isProtected(nfull) || inFolder) && REMOVE_SHELL.test(full)) {
     return 'Deleting, moving or renaming files in the company folders is not allowed, the posting calendar included.';
@@ -291,8 +293,17 @@ function checkBash(input, cwd) {
   // Writes are not guessed from the text (there is always one more way to write a file).
   // Instead every company folder the command names, and the folder it runs in, is copied
   // now; post.js compares afterwards and puts back or removes whatever the rules forbid.
-  if (isProtected(nfull) || inFolder) return snapshotFolders(full, cwd, inFolder);
-  return null;
+  // A plain read (ls, cat, grep ... with no redirect and no script) needs no copy.
+  if (!(isProtected(nfull) || inFolder)) return null;
+  if (!scripts.text && !redirects && isReadOnly(cmdNoDiscard)) return null;
+  return snapshotFolders(full, cwd, inFolder, callId);
+}
+
+// Commands that only read. Every part of a pipeline or chain must be one of these.
+const READ_ONLY_PART = /^\s*(ls|dir|cat|type|head|tail|less|more|grep|egrep|rg|findstr|wc|stat|file|du|pwd|echo|printf|sort|uniq|cut|tr|basename|dirname|realpath|readlink|test|true|get-childitem|gci|get-content|gc|select-string|test-path|get-item|measure-object|select-object|format-list|format-table|find(?![^|;&]*-(delete|exec|execdir|ok|fprint)))(\s|$)/i;
+function isReadOnly(cmd) {
+  const parts = cmd.split(/&&|\|\||[;|\n]/).map((p) => p.trim()).filter(Boolean);
+  return parts.length > 0 && parts.every((p) => READ_ONLY_PART.test(p));
 }
 
 /** Every company folder a command or its scripts name (plus the folder it runs in). */
@@ -326,27 +337,49 @@ function foldersNamed(full, cwd, inFolder) {
 }
 
 const SNAP_LIMIT_BYTES = 400 * 1024 * 1024;
+const SNAP_LIMIT_FILES = 5000;
 
-/** Copy the files of every named company folder, for post.js to compare. Null = ok, else a reason to block. */
-function snapshotFolders(full, cwd, inFolder) {
-  const dirs = foldersNamed(full, cwd, inFolder);
+/** Every file under a folder, at any depth. */
+function walkFiles(dir, out) {
+  for (const name of fs.readdirSync(dir)) {
+    const p = path.join(dir, name);
+    const st = fs.lstatSync(p);
+    if (st.isDirectory()) walkFiles(p, out);
+    else if (st.isFile()) out.push(p);
+  }
+  return out;
+}
+
+/** The snapshot file names for one tool call (its id from the hook input, else a random one). */
+function snapId(callId) {
+  const clean = String(callId || '').replace(/[^A-Za-z0-9_-]/g, '').slice(0, 80);
+  return clean || crypto.randomBytes(8).toString('hex');
+}
+
+/**
+ * Copy every file under every named company folder (all depths), for post.js to compare after
+ * THIS tool call. Null = ok, else a reason to block.
+ */
+function snapshotFolders(full, cwd, inFolder, callId) {
+  let dirs = foldersNamed(full, cwd, inFolder);
   if (!dirs.length) return null;
-  if (dirs.length > 40) return 'That command touches too many company folders at once to be protected. Do it one folder at a time.';
-  const id = crypto.randomBytes(8).toString('hex');
+  // A folder inside another named folder is already covered by it.
+  dirs = dirs.filter((d) => !dirs.some((o) => o !== d && norm(d).startsWith(norm(o).replace(/\/?$/, '/'))));
+  const id = snapId(callId);
   const backupDir = path.join(os.tmpdir(), 'glowming-snap-' + id + '.d');
-  const manifest = { cwd: path.resolve(cwd || process.cwd()), backupDir, dirs: [] };
+  const manifest = { cwd: path.resolve(cwd || process.cwd()), backupDir, created: Date.now(), dirs: [] };
   let total = 0;
+  let n = 0;
   try {
     fs.mkdirSync(backupDir, { recursive: true });
-    let n = 0;
     for (const dir of dirs) {
       const entry = { dir, files: [] };
-      for (const name of fs.readdirSync(dir)) {
-        const p = path.join(dir, name);
-        const st = fs.statSync(p);
-        if (!st.isFile()) continue;
-        total += st.size;
-        if (total > SNAP_LIMIT_BYTES) throw new Error('more than 400 MB to protect');
+      for (const p of walkFiles(dir, [])) {
+        const size = fs.statSync(p).size;
+        total += size;
+        if (total > SNAP_LIMIT_BYTES || n >= SNAP_LIMIT_FILES) {
+          throw new Error('too much to protect at once (over 400 MB or 5000 files); run it from the advert\'s own folder');
+        }
         const buf = fs.readFileSync(p);
         const backup = path.join(backupDir, String(n++));
         fs.writeFileSync(backup, buf);
@@ -427,11 +460,11 @@ function decide(event) {
   const cwd = event.cwd || process.cwd();
   if (/^(Write|Edit|MultiEdit|NotebookEdit)$/.test(tool)) return checkWrite(tool, input, cwd);
   if (tool.startsWith('mcp__')) return checkMcp(tool, input, cwd);
-  if (typeof input.command === 'string') return checkBash(input, cwd);
+  if (typeof input.command === 'string') return checkBash(input, cwd, event.tool_use_id);
   return null;
 }
 
-module.exports = { decide, checkWrite, checkNewFile, isTextFile, norm, sha1, CALENDAR };
+module.exports = { decide, checkWrite, checkNewFile, isTextFile, norm, sha1, walkFiles, snapId, CALENDAR, BANNED_CLAIMS };
 
 if (require.main === module) {
   let buf = '';
