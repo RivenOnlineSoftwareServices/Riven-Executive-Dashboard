@@ -56,6 +56,8 @@ const block = (why, ev) => { assert.notStrictEqual(decide(ev), null, 'should BLO
 const W = (p, content) => ({ tool_name: 'Write', tool_input: { file_path: p, content } });
 const E = (p, o, n) => ({ tool_name: 'Edit', tool_input: { file_path: p, old_string: o, new_string: n } });
 const B = (command) => ({ tool_name: 'Bash', tool_input: { command } });
+// Forward slashes, for paths placed inside a JS string in a node -e command.
+const norm4 = (p) => p.split(path.sep).join('/');
 
 // anton.md: append-only (his log is the record Riaan's side reads).
 allow('append to anton.md', W(files.anton, fs.readFileSync(files.anton, 'utf8') + 'CHANGE | x' + NL));
@@ -182,6 +184,20 @@ block('a shell tool with another name', { tool_name: 'Shell', tool_input: { comm
 block('Approval status stamped Approved by Claude', W(files.caption, caption.replace('Approved (Anton, 26 Sep 2026)', 'Approved (Anton, 1 Oct 2026)')));
 fs.mkdirSync(path.join(root, 'Users', 'anton', 'OneDrive', 'Documents'), { recursive: true });
 allow('a scratch file under a personal OneDrive Documents folder', W(path.join(root, 'Users', 'anton', 'OneDrive', 'Documents', 'scratch.md'), 'x'));
+
+// Codex round 4.
+block('node fs.rmSync on a render', B('node -e "require(\'fs\').rmSync(\'' + norm4(files.png) + '\')"'));
+block('node fs.unlinkSync on a render', B('node -e "require(\'fs\').unlinkSync(\'' + norm4(files.png) + '\')"'));
+block('python open(calendar, "w") despite the calendar exception', B('python -c "open(r\'' + files.calendar + '\', \'w\').write(\'x\')"'));
+block('calendar saved without openpyxl', B('python -c "import shutil; x.save(r\'' + files.calendar + '\')"'));
+block('a relative caption path through a filesystem connector, from the advert folder', { tool_name: 'mcp__filesystem__write_file', tool_input: { path: 'caption.txt', content: 'x' }, cwd: advert });
+block('curl POST to the Meta API', B('curl -X POST "https://graph.facebook.com/v21.0/123/?status=PAUSED"'));
+block('python requests.post to an email API', B('python -c "import requests; requests.post(\'https://api.resend.com/emails\', json={})"'));
+allow('curl GET for reading a page', B('curl -s https://glowming.co.za/'));
+block('a shell-written draft with a weight-loss claim', B('echo "Lose weight fast with Glowming" > /tmp/draft.txt'));
+block('a Magnific prompt with a detox claim', { tool_name: 'mcp__magnific__images_generate', tool_input: { prompt: 'detox drink on a beach' } });
+allow('a Magnific prompt without claims', { tool_name: 'mcp__magnific__images_generate', tool_input: { prompt: 'sunset over Camps Bay, pouch on a table' } });
+allow('a search that mentions a banned word (reading, not writing)', B('grep -n "detox" /tmp/notes.txt'));
 
 fs.rmSync(root, { recursive: true, force: true });
 console.log(passed + ' passed');

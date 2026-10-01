@@ -207,9 +207,14 @@ function checkWrite(tool, input, cwd) {
 }
 
 // Deleting, moving or renaming: never in a company folder, the posting calendar included.
-const REMOVE_SHELL = /(^|[\s;&|(])(rm|del|erase|rmdir|rd|mv|move|ren|rename|unlink|shred|truncate)(\s|$)|remove-item|move-item|rename-item|clear-content|robocopy|xcopy|rsync|shutil\.(rmtree|move)|os\.(remove|unlink|rename|replace|rmdir)|\.unlink\(|\.rename\(|\.rmdir\(|git\s+(clean|checkout|reset|rm|mv)/i;
+const REMOVE_SHELL = /(^|[\s;&|(])(rm|del|erase|rmdir|rd|mv|move|ren|rename|unlink|shred|truncate)(\s|$)|remove-item|move-item|rename-item|clear-content|robocopy|xcopy|rsync|shutil\.(rmtree|move)|os\.(remove|unlink|rename|replace|rmdir)|\.unlink\(|\.rename\(|\.rmdir\(|\b(rmsync|unlinksync|rmdirsync|renamesync)\b|\bfs\.(rm|unlink|rmdir|rename)\b|\bfs\.promises\.(rm|unlink|rmdir|rename)\b|git\s+(clean|checkout|reset|rm|mv)/i;
 // Writing file contents from code (command text AND the scripts it runs).
-const CODE_WRITE = /set-content|add-content|out-file|copy-item|open\([^)]*['"][wax]b?\+?['"]|write_(text|bytes)\(|\.save\(|\.to_(csv|excel)\(|writefile|appendfile|copyfile|\btee\b|\bsed\s+-i|\bperl\s+-\w*i|\bdd\s+[^|;]*of=|\binstall\s|\bpatch\s|\bcp\s|\bcopy\s/i;
+const CODE_WRITE = /set-content|add-content|out-file|copy-item|open\([^)]*['"][wax]b?\+?['"]|write_(text|bytes)\(|\.save\(|\.to_(csv|excel)\(|writefile|appendfile|copyfile|createwritestream|\bfs\.(write|append|copy|cp)\w*|\btee\b|\bsed\s+-i|\bperl\s+-\w*i|\bdd\s+[^|;]*of=|\binstall\s|\bpatch\s|\bcp\s|\bcopy\s/i;
+// Calling a web API to change something (adverts, the shop, email) from the shell or a script.
+// Connectors are the only allowed route to company systems, and they are limited to reads and drafts.
+const NET_WRITE = /\bcurl\b[^|;\n]*(-x\s*(post|put|patch|delete)|--request\s+(post|put|patch|delete)|\s-d[\s'"]|--data|\s-f[\s'"]|--form|\s-t[\s'"]|--upload-file)|\bwget\b[^|;\n]*--(post|method)|invoke-(restmethod|webrequest)[^|;\n]*-method\s+['"]?(post|put|patch|delete)|\b(requests|httpx|session)\.(post|put|patch|delete)\(|method\s*[:=]\s*['"](post|put|patch|delete)['"]|\bsmtplib\b|\bsendmail\b|send_mail\(|graph\.facebook\.com|graph\.microsoft\.com|myshopify\.com|api\.resend\.com|api\.sendgrid\.com/i;
+// Claims that are never allowed in anything this Claude writes or generates (owner rulings, 2026-10-01).
+const BANNED_CLAIMS = /weight[\s-]?loss|lose\s+weight|los(e|ing)\s+\d+\s*kg|fat[\s-]?burn|burn(s|ing)?\s+fat|\bdetox|appetite\s+suppress|suppress(es)?\s+(your\s+)?appetite|fewer\s+cravings|\bslimming\b|\bcures?\b|\bheals?\b|clinically\s+proven/i;
 // Shell redirection into a file: > >> 2> 2>> &> &>>, but not 2>&1. Judged on the COMMAND only
 // (scripts contain arrows and comparisons that are not redirects).
 const REDIRECT = /(^|[^=\-<>])(&|\d)?>{1,2}(?![&>=])/;
@@ -252,7 +257,21 @@ function checkBash(input, cwd) {
   if ((isProtected(norm(cmd)) || inFolder) && REDIRECT.test(cmdNoDiscard)) {
     return 'Shell redirection (> or >>) into the company folders is not allowed. Make the change with the campaign skill\'s checked steps instead.';
   }
-  // The posting calendar is the one company file a script may SAVE (SharePoint keeps its versions).
+  if (NET_WRITE.test(full)) {
+    return 'Changing adverts, the shop or sending email through a web API from the shell is not allowed from this Claude.';
+  }
+  if ((REDIRECT.test(cmdNoDiscard) || CODE_WRITE.test(full)) && BANNED_CLAIMS.test(full)) {
+    return 'That text contains a weight-loss, detox, appetite, cure or "clinically proven" claim, which is never allowed. Remove it.';
+  }
+  // The posting calendar is the one company file a script may SAVE (SharePoint keeps its versions),
+  // and only one way: openpyxl loads it and wb.save() writes it back. Any other write in the same
+  // command or script (open(...,'w'), copy, redirect...) is refused.
+  if (nfull.includes(CALENDAR) && CODE_WRITE.test(full)) {
+    const otherWrites = CODE_WRITE.test(full.replace(/\.save\(/gi, ''));
+    if (otherWrites || !/openpyxl|load_workbook/i.test(full)) {
+      return 'The posting calendar may only be saved by an openpyxl script (load_workbook, change the agreed cells, wb.save). Nothing else may write it.';
+    }
+  }
   // Strip each whole path that ends in the calendar (back to its opening quote), so its folder
   // names do not count; any OTHER company path left in the command or script still does.
   const withoutCalendar = nfull.replace(/[^'"]*02 posting calendar\.xlsx/g, '');
@@ -277,13 +296,17 @@ function stringsIn(v, out) {
 }
 
 /** Decide one connector (MCP) call. */
-function checkMcp(tool, input) {
+function checkMcp(tool, input, cwd) {
   // mcp__<server>__<action>: the server says WHOSE system it is, the action says what it does.
   const parts = tool.toLowerCase().split('__');
   const server = parts.length > 2 ? parts.slice(1, -1).join('__') : '';
   const act = parts[parts.length - 1];
   if (/(delete|trash|remove|move|rename|purge|empty)/.test(act)) {
     return 'Deleting, moving or renaming through a connector is not allowed from this Claude. Ask Riaan\'s side if something must go.';
+  }
+  const strings = stringsIn(input, []);
+  if (!READ_ACTION.test(act) && BANNED_CLAIMS.test(strings.join(NL))) {
+    return 'That request contains a weight-loss, detox, appetite, cure or "clinically proven" claim, which is never allowed. Remove it.';
   }
   if (SAFE_SERVERS.test(server)) return null;
   // A generic Graph caller names no verb: only an explicit GET is a read.
@@ -298,8 +321,10 @@ function checkMcp(tool, input) {
     if (/(send|forward|reply|respond)/.test(act)) return 'This Claude writes emails and messages as drafts only; Anton presses Send himself.';
     return 'Changing files, adverts, the shop or settings through a connector is not allowed from this Claude. Use the checked steps, or ask Riaan\'s side.';
   }
-  // Any other server: a non-read call that names a company folder is judged like a file write.
-  if (stringsIn(input, []).some((s) => isProtected(norm(s)))) {
+  // Any other server: a non-read call whose arguments name a company folder, or a path that
+  // RESOLVES into one from the session folder, is judged like a file write and refused.
+  const looksLikePath = (s) => /[\\/]/.test(s) || /\.[a-z0-9]{1,5}$/i.test(s);
+  if (strings.some((s) => isProtected(norm(s)) || (looksLikePath(s) && s.length < 1024 && isProtected(norm(realLocation(s, cwd)))))) {
     return 'That connector call would touch the company folders. Use the campaign skill\'s checked steps instead.';
   }
   return null;
@@ -310,7 +335,7 @@ function decide(event) {
   const input = event.tool_input || {};
   const cwd = event.cwd || process.cwd();
   if (/^(Write|Edit|MultiEdit|NotebookEdit)$/.test(tool)) return checkWrite(tool, input, cwd);
-  if (tool.startsWith('mcp__')) return checkMcp(tool, input);
+  if (tool.startsWith('mcp__')) return checkMcp(tool, input, cwd);
   if (typeof input.command === 'string') return checkBash(input, cwd);
   return null;
 }
