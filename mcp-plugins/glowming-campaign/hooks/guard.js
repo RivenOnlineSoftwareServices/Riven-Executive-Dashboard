@@ -34,10 +34,10 @@
  */
 'use strict';
 
+const crypto = require('crypto');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
-const calendarLinks = require('./calendar-links.js');
 
 const NL = String.fromCharCode(10);
 const SHARED = '_riven-claude/glowming summer campaign/';
@@ -136,24 +136,39 @@ function approvalLine(text) {
 function keepsTracking(tool, input, current) {
   const next = resultingText(tool, input, current);
   if (next === null) return 'This change could not be checked against the tracking links. Re-read the file and try a smaller change.';
-  // Compare the LINKS themselves, so ticking "- [ ]" on a line with a link is fine.
-  const links = (t) => unify(t).match(/[^\s"'<>()]*utm_[^\s"'<>()]*/gi) || [];
-  const kept = new Set(links(next));
-  return links(current).some((l) => !kept.has(l))
-    ? 'Existing tracking links (utm_) never change. Leave those lines exactly as they are.' : null;
+  // Every line that carries a link must survive, the only allowed change being a ticked box or an
+  // added "(done <date>)". Comparing whole lines (as a multiset) means a link cannot be altered while a
+  // copy of the old one is kept somewhere else, and a duplicate cannot quietly disappear (Codex r6).
+  const shape = (l) => l.replace(/^(\s*)- \[[ xX]\]/, '$1- [ ]').replace(/\s*\(done \d{4}-\d{2}-\d{2}\)\s*$/, '').trimEnd();
+  const linkLines = (t) => unify(t).split(NL).filter((l) => /utm_/i.test(l)).map(shape);
+  const pool = new Map();
+  for (const l of linkLines(next)) pool.set(l, (pool.get(l) || 0) + 1);
+  for (const l of linkLines(current)) {
+    if (!pool.get(l)) return 'Existing tracking links (utm_) never change. Leave those lines exactly as they are.';
+    pool.set(l, pool.get(l) - 1);
+  }
+  return null;
 }
 
 const UNREADABLE = 'That file exists but could not be read (OneDrive may still be downloading it), so the change cannot be checked. Open the folder in File Explorer, wait for the green tick, and try again.';
 
 /** Decide one file write. Returns null to allow, or a plain-English reason to block. */
-function checkWrite(tool, input, cwd) {
+function checkWrite(tool, input, cwd, before) {
   const given = input.file_path || input.notebook_path || '';
   if (!given) return null;
   const raw = realLocation(given, cwd);
   const np = norm(raw);
   if (!isProtected(np)) return null; // a temporary working file outside the company folders
-  const exists = fs.existsSync(raw);
-  const current = exists ? readText(raw) : null;
+  // New text going into a company folder never carries a banned claim (owner rulings 2026-10-01).
+  const added = tool === 'Write' ? input.content
+    : tool === 'MultiEdit' ? (input.edits || []).map((e) => e.new_string || '').join(NL)
+      : (input.new_string || input.new_source || '');
+  if (typeof added === 'string' && BANNED_CLAIMS.test(added)) {
+    return 'That text contains a weight-loss, slimming, detox, appetite, craving, cure or "clinically proven" claim, which is never allowed. Remove it.';
+  }
+  // `before` lets post.js judge a change a shell command already made, against the copy taken first.
+  const exists = before ? before.exists : fs.existsSync(raw);
+  const current = before ? before.current : (exists ? readText(raw) : null);
 
   const shared = after(np, SHARED);
   if (shared !== null) {
@@ -214,9 +229,9 @@ const CODE_WRITE = /set-content|add-content|out-file|copy-item|open\([^)]*['"][w
 // Any web request from the shell or a script. Anton never needs one (connectors and web reading
 // cover him), and every way of changing adverts, the shop or sending email would go through one,
 // so the whole class is refused rather than guessing which methods write (Codex round 5).
-const NET_CALL = /\b(curl|wget|iwr|irm|invoke-restmethod|invoke-webrequest)\b|\b(requests|httpx|aiohttp|urllib3?)\b|urlopen|http\.client|\bfetch\(|\baxios\b|xmlhttprequest|\bsmtplib\b|\bsendmail\b|send_mail\(|net\.webclient|\bsocket\.|graph\.facebook\.com|graph\.microsoft\.com|myshopify\.com|api\.resend\.com|api\.sendgrid\.com/i;
+const NET_CALL = /\b(curl|wget|iwr|irm|invoke-restmethod|invoke-webrequest)\b|\b(requests|httpx|aiohttp|urllib3?)\b|urlopen|http\.client|\bfetch\(|\baxios\b|xmlhttprequest|\bsmtplib\b|\bsendmail\b|send_mail\(|net\.webclient|\bsocket\.|require\(\s*['"](node:)?(https?|http2|net|tls|dgram)['"]\s*\)|from\s+['"](node:)?(https?|http2|net|tls|dgram)['"]|\bhttps?\.(request|get)\(|graph\.facebook\.com|graph\.microsoft\.com|myshopify\.com|api\.resend\.com|api\.sendgrid\.com/i;
 // Claims that are never allowed in anything this Claude writes or generates (owner rulings, 2026-10-01).
-const BANNED_CLAIMS = /\bweight\b|\bslim|fat[\s-]?(loss|burn)|(lose|losing|burn|burns|burning|melt)\s+(the\s+)?(fat|kg|kilos?|weight)|belly\s+fat|\d+\s*kg\b|\bdetox|appetite|craving|\bmetaboli|\bcures?\b|\bheals?\b|clinically\s+proven/i;
+const BANNED_CLAIMS = /weight[\s-]?(loss|control|management)|\bslimming|\bslim\s+down|fat[\s-]?(loss|burn)|(lose|losing|burn|burns|burning|melt)\s+(the\s+)?(fat|kg|kilos?|weight)|belly\s+fat|\d+\s*kg\b|\bdetox|appetite|craving|\bmetaboli|\bcures?\b|\bheals?\b|clinically\s+proven/i;
 // Shell scripts are judged for redirects too (Python and JS are not: ">" there is not a redirect).
 const SHELL_SCRIPT = /\.(sh|bash|ps1|psm1|bat|cmd)$/i;
 // Shell redirection into a file: > >> 2> 2>> &> &>>, but not 2>&1. Judged on the COMMAND only
@@ -243,13 +258,6 @@ function scriptsRun(cmd, cwd) {
   return { text, shellText, unreadable };
 }
 
-/** The real location of the posting calendar a command or script names, or null. */
-function calendarNamed(full, cwd) {
-  const m = full.match(/(?:["']([^"'\n]*02 posting calendar\.xlsx)["'])|((?:[^\s"'\n]*\/)?02 posting calendar\.xlsx)/i);
-  if (!m) return null;
-  return realLocation((m[1] || m[2]).trim(), cwd);
-}
-
 /** Decide one shell command, including the scripts it runs. */
 function checkBash(input, cwd) {
   const cmd = String(input.command || '');
@@ -271,43 +279,100 @@ function checkBash(input, cwd) {
   const cmdNoDiscard = cmd.replace(discard, '');
   const shellNoDiscard = scripts.shellText.replace(discard, '');
   const redirects = REDIRECT.test(cmdNoDiscard) || REDIRECT.test(shellNoDiscard);
-  if ((isProtected(nfull) || inFolder) && redirects) {
-    return 'Shell redirection (> or >>) into the company folders is not allowed. Make the change with the campaign skill\'s checked steps instead.';
-  }
   if (NET_CALL.test(full)) {
     return 'Web requests from the shell or a script are not allowed from this Claude (adverts, the shop and email are never changed this way). Use a connector to read, or ask Riaan\'s side.';
   }
   if ((redirects || CODE_WRITE.test(full)) && BANNED_CLAIMS.test(full)) {
-    return 'That text contains a weight, slimming, detox, appetite, craving, cure or "clinically proven" claim, which is never allowed. Remove it.';
-  }
-  // The posting calendar is the one company file a script may SAVE (SharePoint keeps its versions),
-  // and only one way: openpyxl loads it and wb.save(<calendar>) writes it back. Any other write in
-  // the same command or script is refused, and every .save() must name the calendar.
-  let calendarSave = false;
-  if (nfull.includes(CALENDAR) && CODE_WRITE.test(full)) {
-    const saves = full.match(/\.save\(([^)]*)\)/gi) || [];
-    const otherWrites = CODE_WRITE.test(full.replace(/\.save\(/gi, ''));
-    if (otherWrites || !saves.length || !/openpyxl|load_workbook/i.test(full) || !saves.every((s) => /calendar/i.test(s))) {
-      return 'The posting calendar may only be saved by an openpyxl script: load_workbook, change the agreed cells, then wb.save(calendar_path). Nothing else may write it.';
-    }
-    const file = calendarNamed(full, cwd);
-    if (!file || !fs.existsSync(file)) {
-      return 'The posting calendar named in that script could not be found, so the save was blocked.';
-    }
-    const problem = calendarLinks.snapshot(file);
-    if (problem) return problem;
-    calendarSave = true;
-  }
-  // Strip each whole path that ends in the calendar (back to its opening quote), so its folder
-  // names do not count; any OTHER company path left in the command or script still does.
-  const withoutCalendar = nfull.replace(/[^'"]*02 posting calendar\.xlsx/g, '');
-  if ((isProtected(withoutCalendar) || (inFolder && !calendarSave)) && CODE_WRITE.test(full)) {
-    return 'Shell commands and scripts may not overwrite files in the company folders (only the posting calendar may be saved). Make the change with the campaign skill\'s checked steps instead.';
+    return 'That text contains a weight-loss, slimming, detox, appetite, craving, cure or "clinically proven" claim, which is never allowed. Remove it.';
   }
   if (inFolder && scripts.unreadable > 0) {
     return 'A script was started from a company folder but could not be read, so it was blocked to be safe.';
   }
+  // Writes are not guessed from the text (there is always one more way to write a file).
+  // Instead every company folder the command names, and the folder it runs in, is copied
+  // now; post.js compares afterwards and puts back or removes whatever the rules forbid.
+  if (isProtected(nfull) || inFolder) return snapshotFolders(full, cwd, inFolder);
   return null;
+}
+
+/** Every company folder a command or its scripts name (plus the folder it runs in). */
+function foldersNamed(full, cwd, inFolder) {
+  const dirs = new Set();
+  if (inFolder) dirs.add(path.resolve(cwd));
+  // Candidates: every piece between quotes and line breaks, and every whitespace token. A path
+  // inside a quoted one-liner (python -c "open(r'...')") is its own piece once split on quotes.
+  const pieces = new Set();
+  for (const seg of full.split(/["'\n\r`]/)) {
+    pieces.add(seg.trim());
+    for (const t of seg.split(/[\s<>|;&(),]+/)) pieces.add(t);
+  }
+  for (const piece of pieces) {
+    if (!piece || !isProtected(norm(piece))) continue;
+    // Walk up from the named path to the nearest folder that exists: a file's folder, a glob's
+    // folder, or the folder of a path followed by code.
+    let p = realLocation(piece, cwd);
+    let st = null;
+    for (let i = 0; i < 40; i++) {
+      try { st = fs.statSync(p); break; } catch (e) { st = null; }
+      const parent = path.dirname(p);
+      if (parent === p) break;
+      p = parent;
+    }
+    if (!st) continue;
+    if (!st.isDirectory()) p = path.dirname(p);
+    if (isProtected(norm(p))) dirs.add(p);
+  }
+  return [...dirs];
+}
+
+const SNAP_LIMIT_BYTES = 400 * 1024 * 1024;
+
+/** Copy the files of every named company folder, for post.js to compare. Null = ok, else a reason to block. */
+function snapshotFolders(full, cwd, inFolder) {
+  const dirs = foldersNamed(full, cwd, inFolder);
+  if (!dirs.length) return null;
+  if (dirs.length > 40) return 'That command touches too many company folders at once to be protected. Do it one folder at a time.';
+  const id = crypto.randomBytes(8).toString('hex');
+  const backupDir = path.join(os.tmpdir(), 'glowming-snap-' + id + '.d');
+  const manifest = { cwd: path.resolve(cwd || process.cwd()), backupDir, dirs: [] };
+  let total = 0;
+  try {
+    fs.mkdirSync(backupDir, { recursive: true });
+    let n = 0;
+    for (const dir of dirs) {
+      const entry = { dir, files: [] };
+      for (const name of fs.readdirSync(dir)) {
+        const p = path.join(dir, name);
+        const st = fs.statSync(p);
+        if (!st.isFile()) continue;
+        total += st.size;
+        if (total > SNAP_LIMIT_BYTES) throw new Error('more than 400 MB to protect');
+        const buf = fs.readFileSync(p);
+        const backup = path.join(backupDir, String(n++));
+        fs.writeFileSync(backup, buf);
+        entry.files.push({ path: p, sha1: sha1(buf), backup });
+      }
+      manifest.dirs.push(entry);
+    }
+    fs.writeFileSync(path.join(os.tmpdir(), 'glowming-snap-' + id + '.json'), JSON.stringify(manifest));
+  } catch (e) {
+    fs.rmSync(backupDir, { recursive: true, force: true });
+    return 'The company files this command touches could not be copied first (' + e.message + '), so it was blocked. Check OneDrive has finished syncing.';
+  }
+  return null;
+}
+
+function sha1(buf) {
+  return crypto.createHash('sha1').update(buf).digest('hex');
+}
+
+function isTextFile(np) {
+  return EDITABLE_TEXT.test(np) || /\/caption\.txt$/.test(np);
+}
+
+/** May a NEW file appear at p? Null = yes, else the reason (the same rules as the file tools). */
+function checkNewFile(p, cwd) {
+  return checkWrite('Write', { file_path: p, content: '' }, cwd, { exists: false, current: null });
 }
 
 // Servers whose actions change nothing in Glowming's own systems (owner ruling: Anton renders on Magnific).
@@ -366,7 +431,7 @@ function decide(event) {
   return null;
 }
 
-module.exports = { decide };
+module.exports = { decide, checkWrite, checkNewFile, isTextFile, norm, sha1, CALENDAR };
 
 if (require.main === module) {
   let buf = '';

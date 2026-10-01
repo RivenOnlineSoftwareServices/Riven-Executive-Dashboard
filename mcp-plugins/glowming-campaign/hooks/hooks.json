@@ -29,7 +29,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node \"${CLAUDE_PLUGIN_ROOT}/hooks/calendar-links.js\"",
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/hooks/post.js\"",
             "timeout": 15
           }
         ]

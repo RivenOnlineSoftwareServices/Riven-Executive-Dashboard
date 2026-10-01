@@ -1,22 +1,18 @@
 #!/usr/bin/env node
 /**
- * Tracking links inside the posting calendar (.xlsx) must survive every save.
- *
- * The guard (PreToolUse) lets an openpyxl script save the calendar. Before it runs,
- * snapshot() copies the workbook and records every utm_ link in it. After the
- * command (PostToolUse), verify() reads the links again; if any link was changed
- * or removed it puts the copy back and blocks with a plain-English reason.
+ * Tracking links inside the posting calendar (.xlsx), read CELL BY CELL.
  *
  * An .xlsx file is a zip of XML parts. This reads it with Node's own zlib (no
- * dependencies): every .xml / .rels part is scanned, so links in cells, shared
- * strings and hyperlink targets are all seen.
+ * dependencies). cellLinks() returns every cell whose text holds a utm_ link,
+ * keyed by sheet and cell reference, plus every hyperlink target keyed by sheet
+ * and relationship id. linksKept(before, after) is true only if every one of
+ * those cells and targets still holds exactly the same text: moving a link to
+ * another cell, or changing it while a copy survives elsewhere, both fail
+ * (Codex round 6, 2026-10-01).
  */
 'use strict';
 
-const crypto = require('crypto');
 const fs = require('fs');
-const os = require('os');
-const path = require('path');
 const zlib = require('zlib');
 
 /** The XML text of every part in a zip file (stored or deflated entries). */
@@ -53,66 +49,50 @@ function decodeXml(s) {
   return s.replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&apos;/g, "'");
 }
 
-/** Every distinct utm_ link in a workbook, sorted. Throws if the file cannot be read as a workbook. */
-function linksIn(file) {
+/** All the text inside the <t> elements of an XML fragment. */
+function textOf(xml) {
+  return [...xml.matchAll(/<t(?:\s[^>]*)?>([\s\S]*?)<\/t>/g)].map((m) => decodeXml(m[1])).join('');
+}
+
+/** Map of "sheet!REF" -> cell text and "sheet#rId" -> hyperlink target, for every one holding utm_. */
+function cellLinks(file) {
   const parts = zipParts(fs.readFileSync(file));
-  const found = new Set();
-  for (const xml of Object.values(parts)) {
-    for (const m of decodeXml(xml).match(/[^\s"'<>]*utm_[^\s"'<>]*/gi) || []) found.add(m);
-  }
-  return [...found].sort();
-}
-
-function snapshotPath(file) {
-  const id = crypto.createHash('sha1').update(path.resolve(file).toLowerCase()).digest('hex').slice(0, 16);
-  return path.join(os.tmpdir(), 'glowming-calendar-' + id);
-}
-
-/** Before a calendar save: keep a copy and the list of its links. Returns an error string or null. */
-function snapshot(file) {
-  try {
-    const links = linksIn(file);
-    const base = snapshotPath(file);
-    fs.copyFileSync(file, base + '.xlsx');
-    fs.writeFileSync(base + '.json', JSON.stringify({ file: path.resolve(file), links }));
-    return null;
-  } catch (e) {
-    return 'The posting calendar could not be read to protect its tracking links (' + e.message + '), so the save was blocked. Check OneDrive has finished syncing and try again.';
-  }
-}
-
-/** After a command: every pending snapshot is checked; lost links mean the copy goes back. */
-function verifyAll() {
-  const problems = [];
-  for (const f of fs.readdirSync(os.tmpdir())) {
-    if (!/^glowming-calendar-[0-9a-f]{16}\.json$/.test(f)) continue;
-    const meta = path.join(os.tmpdir(), f);
-    const copy = meta.replace(/\.json$/, '.xlsx');
-    let rec;
-    try { rec = JSON.parse(fs.readFileSync(meta, 'utf8')); } catch (e) { continue; }
-    let now = null;
-    try { now = linksIn(rec.file); } catch (e) { now = null; }
-    const lost = now === null ? rec.links : rec.links.filter((l) => !now.includes(l));
-    if (lost.length) {
-      try { fs.copyFileSync(copy, rec.file); } catch (e) { /* reported below */ }
-      problems.push('The posting calendar lost or changed ' + lost.length + ' tracking link(s), so the earlier version was put back. Change only the cells that do not hold links.');
+  const sst = parts['xl/sharedStrings.xml']
+    ? [...parts['xl/sharedStrings.xml'].matchAll(/<si>([\s\S]*?)<\/si>/g)].map((m) => textOf(m[1]))
+    : [];
+  const out = new Map();
+  for (const [name, xml] of Object.entries(parts)) {
+    if (/^xl\/worksheets\/[^/]+\.xml$/.test(name)) {
+      for (const m of xml.matchAll(/<c\s+([^>]*?)(?:\/>|>([\s\S]*?)<\/c>)/g)) {
+        const attrs = m[1];
+        const inner = m[2] || '';
+        const ref = (attrs.match(/\br="([A-Z]+\d+)"/) || [])[1];
+        if (!ref) continue;
+        const type = (attrs.match(/\bt="([^"]+)"/) || [])[1];
+        const v = (inner.match(/<v>([\s\S]*?)<\/v>/) || [])[1];
+        const f = (inner.match(/<f[^>]*>([\s\S]*?)<\/f>/) || [])[1] || '';
+        let text = '';
+        if (type === 's' && v !== undefined) text = sst[Number(v)] || '';
+        else if (type === 'inlineStr') text = textOf(inner);
+        else if (v !== undefined) text = decodeXml(v);
+        const all = text + (f ? ' =' + decodeXml(f) : '');
+        if (/utm_/i.test(all)) out.set(name + '!' + ref, all);
+      }
+    } else if (/^xl\/worksheets\/_rels\/[^/]+\.rels$/.test(name)) {
+      for (const m of xml.matchAll(/<Relationship\s+([^>]*?)\/?>/g)) {
+        const id = (m[1].match(/\bId="([^"]+)"/) || [])[1];
+        const target = decodeXml((m[1].match(/\bTarget="([^"]+)"/) || [])[1] || '');
+        if (id && /utm_/i.test(target)) out.set(name + '#' + id, target);
+      }
     }
-    fs.rmSync(meta, { force: true });
-    fs.rmSync(copy, { force: true });
   }
-  return problems.length ? problems.join(' ') : null;
+  return out;
 }
 
-module.exports = { linksIn, snapshot, verifyAll, zipParts };
-
-// PostToolUse entry point.
-if (require.main === module) {
-  let buf = '';
-  process.stdin.setEncoding('utf8');
-  process.stdin.on('data', (c) => { buf += c; });
-  process.stdin.on('end', () => {
-    const problem = verifyAll();
-    if (problem) { process.stderr.write('Glowming campaign guard: ' + problem); process.exit(2); }
-    process.exit(0);
-  });
+/** True when every link cell / target of `before` still holds exactly the same text in `after`. */
+function linksKept(before, after) {
+  for (const [k, v] of before) if (after.get(k) !== v) return false;
+  return true;
 }
+
+module.exports = { cellLinks, linksKept, zipParts };

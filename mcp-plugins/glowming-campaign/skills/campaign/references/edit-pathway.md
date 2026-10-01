@@ -74,8 +74,9 @@ File: `02 Posting calendar.xlsx`.
 - How: write a short Python script to a file that sets `calendar_path` to the calendar, runs
   `wb = openpyxl.load_workbook(calendar_path)`, changes only the cells agreed in step 4, and ends
   with `wb.save(calendar_path)`; then run it. No other write may be in that script, and no web
-  request. The guard refuses any other way of saving the calendar, refuses deleting, moving or
-  renaming it, and puts the earlier calendar back if a save lost a tracking link.
+  request. The guard refuses replacing the calendar with the file tools, refuses deleting, moving
+  or renaming it, and puts the earlier calendar back if a save changed, moved or lost a tracking
+  link.
 - Never change an existing "Link used" cell: tracking links are never altered.
 - If the workbook is open elsewhere or locked, stop and tell Anton; do not save a copy instead.
 
