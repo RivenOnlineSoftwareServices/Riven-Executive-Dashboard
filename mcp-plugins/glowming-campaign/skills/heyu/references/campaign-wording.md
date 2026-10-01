@@ -8,7 +8,9 @@ English only. Tracking codes and link format: `voice-and-wording.md` (Tracking l
 
 Advert codes are the tracking codes. Most adverts have two designs: **A** (photo) and **B** (colour); some have a **C** option. The design letter does not change the words.
 
-**Benefit bubble** on the picture of A2, A3, A5 and A11: **Gut health · energy · immunity · skin glow**
+**Benefit bubble** on the picture of A2, A3, A5 and A11: **Gut health · energy · immunity · skin glow** (owner-approved, live; source owed).
+
+**Health wording in this file** (the benefit line "Gut health, energy, immunity and skin glow" in any form, "70 million drinks", the customer quotes, the I1 bloating headlines) is owner-approved and live. Reuse it word for word, only where it is approved; never extend or paraphrase it into a stronger claim. Where no written source exists it is marked "owner-approved, live; source owed". Lines marked "(compliance addition)" were added to approved copy to meet the T&Cs rule.
 
 ### Step 1: introduce Glowming (people who do not know it yet)
 
@@ -20,8 +22,8 @@ Advert codes are the tracking codes. Most adverts have two designs: **A** (photo
 | I4 | Approved | Lerato's own video explaining Glowming | Meet Glowming with Lerato | See how she makes hers. | Learn more | Her own |
 
 Later approvals for Step 1:
-- **I1 picture headlines** (Anton, 28 September; owner ruling to keep as written): I1-A "Bloating, poor digestion or low energy?", I1-B "Feeling bloated, backed-up or low energy?". I1-C is I1-B with fanned sachets.
-- **"70 MILLION drinks sold globally" bubble** (owner ruling 28 September, paid adverts allowed): on I3-A and I3-B; I2-C is the bubble option of I2.
+- **I1 picture headlines** (Anton, 28 September; owner ruling to keep as written): I1-A "Bloating, poor digestion or low energy?", I1-B "Feeling bloated, backed-up or low energy?". I1-C is I1-B with fanned sachets. Risk note: Meta's personal-attribute policy may reject them. They stay on I1 only and are NOT usable in new adverts.
+- **"70 MILLION drinks sold globally" bubble** (owner ruling 28 September, paid adverts allowed): on I3-A and I3-B; I2-C is the bubble option of I2. Owner-approved, live; source owed.
 - **Extra headline and text options:** Anton added options to Step 1 adverts in Meta on 29 September. They are approved, EXCEPT these two headlines, which were removed and must never return: "Your body has been asking for this" and "Glowming is what your body has been looking for". For those options, the live advert in Ads Manager is the reference.
 
 ### Step 2: people who already know Glowming
@@ -33,29 +35,29 @@ Wording order: main text / headline / short line / button.
 | A1 | Approved | Your favourite wellness drink could take you to Cape Town. Join the Glowming Journey free and check in with your daily Glowming Ritual: every day you check in earns an entry. Entries close 30 November. T&Cs apply. / Win Cape Town for two / Free to enter. T&Cs apply. / Learn more | Cape Town, a Glowming being made up |
 | A2 | Changed (picture) | Any 3 flavours, R999 delivered. 30 sachets for your 6-week Glowming Journey, and every pouch earns entries to win Cape Town for two. T&Cs apply. / Any 3 flavours. R999, delivered. / Start your Glowming Journey / Shop now | Three pouches, R999 hero, benefit bubble |
 | A3 | Changed (picture) | Mix one sachet and sip it through your day. Marine collagen, glutathione, L-carnitine, moringa, fibre and green tea extract in one daily Glowming Ritual. / Your daily Glowming Ritual / Holiday-ready, all year. / Shop now | Hand stirring a sachet, benefit bubble |
-| A4 | Approved | Six weeks. One Glowming Ritual a day. Join the Glowming Journey free, check in each day in the Journey web app and see how you feel by week six. Choose your start: Monday 5 October or Monday 19 October. / Join the Glowming Journey / Free to join. Win Cape Town. / Sign up | Phone with the Journey app check-in, a glass |
+| A4 | Approved | Six weeks. One Glowming Ritual a day. Join the Glowming Journey free, check in each day in the Journey web app and see how you feel by week six. Choose your start: Monday 5 October or Monday 19 October. / Join the Glowming Journey / Free to join. Win Cape Town. T&Cs apply. (compliance addition) / Sign up | Phone with the Journey app check-in, a glass |
 | A5 | Changed (picture) | The Glowming Journey starts Monday 5 October. Get your 3 pouches in time: any 3 flavours for R999, delivered. / Starts Monday 5 October / Order in time for day 1 / Shop now (second version: 19 October) | Calendar look, benefit bubble |
-| A6 | **No decision yet** | Subscriptions, save 5% (from Thu 1 Oct). Do not post an A6 advert until Anton approves its words. | - |
+| A6 | **No decision yet** | Subscriptions (from Thu 1 Oct). Do not post, design or switch on an A6 advert until Anton approves its words. Any saving in it is shown in rand only, never as a percentage. | - |
 | A7 | Changed (picture) | Payday. Start your 6-week Glowming Journey: any 3 flavours for R999, delivered, plus entries to win Cape Town for two. T&Cs apply. / Payday: any 3 for R999 / Delivered to your door / Shop now | A2 look + quote on picture: "Cleansed my gut so well. Feel lighter and energized" |
 | A8 | Approved | Last days to win Cape Town for two. Entries close at 23:59 on Monday 30 November. Every pouch you order and every daily check-in counts. T&Cs apply. / Entries close 30 November / Free to enter. T&Cs apply. / Learn more | A1 look, countdown tag |
 | A9 | Approved | Lerato's own post / Join Lerato's Glowming Journey / Six weeks, one Glowming Ritual a day. / Sign up | Her own |
 | A10 | Approved | Mollie's own post / Join Mollie's Glowming Journey / Six weeks, one Glowming Ritual a day. / Sign up | Her own |
-| A11 | Changed (picture) | TikTok caption: Six weeks, one Glowming Ritual a day. Join free, check in daily and you could win Cape Town for two. Link in bio. #GlowmingJourney #MyGlowmingRitual / on screen: Day 1 of my Glowming Journey | 9x16 cover, benefit bubble |
+| A11 | Changed (picture) | TikTok caption: Six weeks, one Glowming Ritual a day. Join free, check in daily and you could win Cape Town for two. T&Cs apply. (compliance addition) Link in bio. #GlowmingJourney #MyGlowmingRitual / on screen: Day 1 of my Glowming Journey | 9x16 cover, benefit bubble |
 
 Notes:
 - A1's wording was Anton's "Option B".
 - I4, A9 and A10 are host partnership adverts: the host's own video or post, run with her tracked link. Heyu writes only the Glowming headline and short line shown here, never the host's own words.
-- Landing pages: A2 and A7 go to the shop (`/collections/all`); every other advert goes to the Journey page (`/pages/journey`).
+- Links: never change an existing link or `utm_` value. I4, A9 and A10 keep the host's own tracked link. For the Glowming adverts, A2 and A7 link to the shop (`/collections/all`) and the others to the Journey page (`/pages/journey`); new links come from Riaan's side only.
 
 ## 2. R55 Welcome campaign copy (Heyu, 27 September 2026)
 
-Compliance-checked, with the owners' funding decision built in. Ask Anton which pieces he has approved before offering any of it as final. Facts it rests on: the R55 is for NEW customers, first order only, with the affiliate's own code; R45 comes off the affiliate's commission on that order and Glowming covers R10; the customer is then linked to the affiliate. It does not combine with the Journey price (one discount per order). No single-pouch price is quoted. **[FUNDING]** marks the lines that state who pays for the R55.
+Compliance-checked. Ask Anton which pieces he has approved before offering any of it as final. Facts it rests on: the R55 is for NEW customers, first order only, with the affiliate's own code; the customer is then linked to the affiliate. It does not combine with the Journey price (one discount per order). No single-pouch price is quoted. How the R55 is funded is an internal matter and is never stated in this skill's copy; if Anton asks to add it, he writes those words himself.
 
 ### A. To the affiliates
 
 **A1. WhatsApp from Glowming HQ (under 80 words)**
 
-> Hi [FIRST NAME] 👋 In March, half of Glowming's new customers came through affiliates like you. You can make that easy again: switch on the **R55 Welcome** in your Glowming portal (open your dashboard, find the R55 welcome card, switch on and tap 'Yes, give them R55'). Your friends get R55 off their first order with your code, and every order they place after that earns you commission. **[FUNDING] It costs you R45 once.** Your share cards are attached.
+> Hi [FIRST NAME] 👋 In March, half of Glowming's new customers came through affiliates like you. You can make that easy again: switch on the **R55 Welcome** in your Glowming portal (open your dashboard, find the R55 welcome card, switch on and tap 'Yes, give them R55'). Your friends get R55 off their first order with your code, and every order they place after that earns you commission. Your share cards are attached.
 
 **A2. GlowMail email**
 
@@ -72,7 +74,7 @@ Compliance-checked, with the owners' funding decision built in. Ask Anton which 
 > 2. **Share your code:** your friend gets R55 off their first Glowming order.
 > 3. **Keep earning:** they're linked to you, so you earn commission on every order they place after that.
 >
-> **[FUNDING]** R45 of the R55 comes from your commission on that first order, and Glowming covers the rest. One small welcome, and a customer who keeps coming back.
+> One small welcome, and a customer who keeps coming back.
 >
 > Ready-made cards, a WhatsApp message and a story are attached; put your own code on them.
 >
@@ -85,7 +87,6 @@ Compliance-checked, with the owners' funding decision built in. Ask Anton which 
 
 - **Headline:** Give R55. Gain a customer.
 - **Line:** Friends get R55 off their first Glowming with your code. You earn on every order after that.
-- **Small print [FUNDING]:** R45 comes from your commission on their first order; Glowming covers R10.
 - **Button:** Switch on R55 Welcome
 - **After switching on:** You're on. Share your code: **[CODE]** · Get your share cards →
 
@@ -143,7 +144,7 @@ These are templates the affiliate personalises and sends herself. Every one keep
 Goes to the newsletter list. Heyu does not send it; the planned send date is set by the owners (Thursday 8 October at last record; confirm before quoting a date). The button opens the shop (all products), not the cart.
 
 - **Subject:** Your Glowming, delivered every month
-- **Preview text:** Subscriptions are now open. Save on every pouch, and earn entries to win Cape Town for two.
+- **Preview text:** Subscriptions are now open. Save on every pouch, and earn entries to win Cape Town for two. T&Cs apply. (compliance addition)
 
 > Hi {{first_name}},
 >
@@ -165,7 +166,7 @@ Goes to the newsletter list. Heyu does not send it; the planned send date is set
 > **Your Glowming Ritual is waiting.**
 > The Glowming team
 
-Fixed points Anton approved: the heading "Subscriptions are here.", the saving line "You save 5% on every pouch you subscribe to.", the button "Subscribe now" opening the shop, and "pause or cancel anytime" stays. "T&Cs apply" links to the competition rules page.
+Fixed points Anton approved: the heading "Subscriptions are here.", the saving line "You save 5% on every pouch you subscribe to." (approved for THIS email only; everywhere else the saving is shown in rand only, never as a percentage), the button "Subscribe now" opening the shop, and "pause or cancel anytime" stays. "T&Cs apply" links to the competition rules page.
 
 ## 4. Other approved lines in use
 

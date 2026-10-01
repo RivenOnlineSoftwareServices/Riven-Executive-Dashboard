@@ -26,8 +26,11 @@ re-open a rule without Riaan or Anton; if Anton wants one changed, record his wo
 - Its website link ends with `utm_content=<code in lower case>` (`i1-a`, `a5-b`, `i1-a-video`) and
   `utm_term=<feed|story|reel>`. Paid links use `utm_medium=paid_social`, organic posts
   `organic_social`; `utm_source=meta`; `utm_campaign=glowming-journey-2026`.
-- **A copy of an advert gets its own code**, or nobody can tell which one sold.
-- Host partnership adverts (I4, A9, A10) keep the host's own tracked link with the same tags added.
+- **A copy of an advert gets its own code**, or nobody can tell which one sold. New codes and new
+  links are made by Riaan's side only (ask in `anton.md` under `## Questions`); existing `utm_`
+  links in any file are never changed.
+- Host partnership adverts (I4, A9, and A10 if it is ever made; A10 has no folder yet) keep the
+  host's own tracked link with the same tags added.
 - Advert families: Step 1 "introduce" = I1 Meet Glowming, I2 Customer review (Lungile),
   I3 One easy daily habit, I4 Meet Glowming with Lerato. Step 2 "already know Glowming" =
   A1 Win Cape Town for two, A2 Any 3 for R999, A3 Your daily Glowming Ritual, A4 Join the
@@ -54,7 +57,8 @@ re-open a rule without Riaan or Anton; if Anton wants one changed, record his wo
   (Riaan, 30 Sep: "Rand amount only"). The launch email's line "You save 5% on every pouch you
   subscribe to." is approved for that email only.
 - Every new or changed customer-facing line passes the `heyu` compliance gate first.
-- Never propose Dis-Chem. No cost prices or margins in any plan or file.
+- Never propose Dis-Chem. No cost prices, landed costs, margins or internal funding splits in any
+  plan or file. Advert spend and Magnific credits ARE shown to Anton: he approves spend.
 
 ## Pictures and video
 

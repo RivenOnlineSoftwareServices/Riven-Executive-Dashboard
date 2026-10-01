@@ -7,9 +7,12 @@ competition closes at **23:59 on Monday 30 November**. Offer: **any 3 flavours,
 R999, delivered**. **English only.**
 
 The words below are the **approved** wording: Anton's decisions in the advert
-review (v2, 26 September 2026) plus Riaan's rulings. Use them **word for word**.
-Anything not here (new words, a new offer, a changed line) goes to **Heyu
-first**; Zac does not design it as final until she clears it.
+review (v2, 26 September 2026) plus Riaan's rulings. They are owner-approved
+and already live. Reuse them **word for word, exactly as approved**: never
+extend, reword or combine them into a new claim. Zac never writes a new health
+claim. Anything not here (new words, a new offer, a changed line) goes to
+**Heyu first**; Zac does not design it as final until she clears it. Any doubt
+about a claim also goes to Heyu.
 
 ## 1. Advert codes and design letters
 
@@ -19,23 +22,29 @@ first**; Zac does not design it as final until she clears it.
   Extra designs get the next letter (for example **I1-C** is I1-B with the
   fanned sachets instead of pouches; **I2-C** is the "70 MILLION" bubble
   option of I2).
-- **A copy of an advert gets its own code.** For example the two feed video
-  versions are **I1-A-video** and **I1-C-video**. Never reuse an existing code
-  for a new design.
+- **A copy of an advert has its own code** (for example the two feed video
+  versions are **I1-A-video** and **I1-C-video**). Zac never creates a code:
+  if a new advert or code seems needed, he adds a request to Riaan's side in
+  `anton.md` under `## Questions` (through the edit pathway) and tells Anton.
+- The folder names in `01 Ready to post` are the source of truth for which
+  codes exist.
 
 ## 2. Naming
 
-- **Meta advert name:** `GJ26 | <CODE> | <feed|story>`, for example
-  `GJ26 | I1-A | feed` or `GJ26 | A3-B | story`.
-- **File names:** `|` is not allowed in Windows file names, so files use
-  `GJ26 - <CODE> - <feed|story|square> - v<N>.png` (or `.mp4`), unless the
-  shared campaign rules set another pattern. Every new version gets the next
-  `v` number; nothing is overwritten.
+- **Meta advert name** (for reference only; Zac never changes Meta):
+  `GJ26 | <CODE> | <feed|story>`, for example `GJ26 | I1-A | feed`.
+- **File names** (Action 4 of the edit pathway):
+  `<CODE> <size> v<N> <YYYY-MM-DD>`, for example
+  `A5-B story 9x16 v2 2026-10-02.png`. Every new version gets the next `v`
+  number; nothing is overwritten.
 
-## 3. Tracking rule
+## 3. Tracking (read-only for Zac)
 
-Every advert link ends with the advert's own code in lower case, so results
-show per advert:
+**Zac never changes a tracking link.** Existing `utm_` links (in caption
+files, plans or anywhere else) stay exactly as they are, character for
+character. Zac does not add tags or build links. This section only explains
+what the links mean. Each advert link ends with the advert's own code in lower
+case, so results show per advert:
 
 ```
 ?utm_source=meta&utm_medium=paid_social&utm_campaign=glowming-journey-2026&utm_content=<code in lower case>&utm_term=<feed|story|reel>
@@ -43,23 +52,22 @@ show per advert:
 
 - `utm_content` = the code plus design letter in lower case: `i1-a`, `a3-b`,
   `i1-a-video`.
-- A copy of an advert gets **its own code** and therefore its own
-  `utm_content`.
-- Host partnership adverts (I4, A9, A10) keep the host's own tracked link,
-  with the same tags added.
-- Zac does not set links or anything else in Meta. He uses the code to name
-  files correctly.
+- Host partnership adverts (I4, A9, A10) use the host's own tracked link.
+- Any new link, tag or code is a request to Riaan's side in `anton.md` under
+  `## Questions`, never something Zac makes.
 
 ## 4. Approved wording
 
 **Benefit bubble** (Anton): a small block or bubble on the picture reading
-**Gut health · energy · immunity · skin glow**, on A2, A3, A5 and A11.
+**Gut health · energy · immunity · skin glow**, on **A2, A3, A5 and A11
+only** (these four rows are marked **benefit bubble** in the table below).
 
 **Anton's benefit line "Gut health, energy, immunity and skin glow"** runs as
 written (Riaan's ruling, 26 September).
 
 **"Cleansed my gut so well. Feel lighter and energized"** is a real customer
-message.
+message, approved for A7. Like Lungile's I2 quote, it is an approved
+testimonial: used verbatim, never edited or extended.
 
 **"70 MILLION drinks sold globally" bubble:** may run in **paid** adverts
 (Riaan, 28 September). The finals I3-A and I3-B carry the bubble; I2-C is the
@@ -81,7 +89,7 @@ Wording column order: main text / headline / short line / button.
 | Code | Decision | Wording (main text / headline / short line / button) | Picture |
 |---|---|---|---|
 | A1 | Approved | Option B (Anton): Your favourite wellness drink could take you to Cape Town. Join the Glowming Journey free and check in with your daily Glowming Ritual: every day you check in earns an entry. Entries close 30 November. T&Cs apply. / Win Cape Town for two / Free to enter. T&Cs apply. / Learn more | Cape Town, a Glowming being made up |
-| A2 | Changed (picture) | Any 3 flavours, R999 delivered. 30 sachets for your 6-week Glowming Journey, and every pouch earns entries to win Cape Town for two. T&Cs apply. / Any 3 flavours. R999, delivered. / Start your Glowming Journey / Shop now | Three pouches, R999 hero, **benefit bubble** |
+| A2 | Changed (picture) | Any 3 flavours, R999 delivered. 30 sachets for your 6-week Glowming Journey, and every pouch earns entries to win Cape Town for two. T&Cs apply. / Any 3 flavours. R999, delivered. / Start your Glowming Journey / Shop now | Three pouches, R999 hero, **benefit bubble** (see note on "30 sachets" in section 5) |
 | A3 | Changed (picture) | Mix one sachet and sip it through your day. Marine collagen, glutathione, L-carnitine, moringa, fibre and green tea extract in one daily Glowming Ritual. / Your daily Glowming Ritual / Holiday-ready, all year. / Shop now | Hand stirring a sachet, **benefit bubble** |
 | A4 | Approved | Six weeks. One Glowming Ritual a day. Join the Glowming Journey free, check in each day in the Journey web app and see how you feel by week six. Choose your start: Monday 5 October or Monday 19 October. / Join the Glowming Journey / Free to join. Win Cape Town. / Sign up | Phone with the Journey app check-in, a glass |
 | A5 | Changed (picture) | The Glowming Journey starts Monday 5 October. Get your 3 pouches in time: any 3 flavours for R999, delivered. / Starts Monday 5 October / Order in time for day 1 / Shop now (second version: 19 October) | Calendar look, **benefit bubble** |
@@ -98,15 +106,21 @@ Wording column order: main text / headline / short line / button.
   wording to Heyu.
 - **I4, A9, A10 are the hosts' own material** ("Her own"). Do not redesign
   them; at most resize them, unchanged, if asked.
-- **The A2 to A5 "benefit bubble"** is the only benefit block approved for
-  pictures; its words are fixed: **Gut health · energy · immunity · skin glow**.
+- **The benefit bubble goes on A2, A3, A5 and A11 only** (not A4, not any
+  other advert unless Anton approves it); its words are fixed: **Gut health ·
+  energy · immunity · skin glow**.
+- **A2 "30 sachets for your 6-week Glowming Journey"** is approved wording:
+  keep it verbatim, do not change it. Note: Riaan's side is asked to confirm
+  it (6 weeks of one sachet a day = 42 sachets). If Anton asks about it, say
+  it is with Riaan's side; do not fix it yourself.
 - **Daily wording shows sachets** (for example A3 "Mix one sachet...", I3
   "one easy daily habit"); offer wording (R999, 3 pouches) shows pouches.
 - **"Normally R1,157" is not used in paid adverts.** Do not add a "was" price
   or a saving figure that is not in the approved words.
 - Ingredient count, if it ever appears, is **"14 ingredients"**, never
   "premium ingredients".
-- No weight, body, before-and-after or bedtime wording anywhere. Pouches are
-  never "tubs".
+- No weight, body, before-and-after or bedtime wording in any NEW words.
+  Approved customer testimonials (Lungile's I2 quote, the A7 quote) stay
+  verbatim as approved. Pouches are never "tubs".
 - If any wording here seems to conflict with a newer instruction from Anton,
   ask him which is current before designing.

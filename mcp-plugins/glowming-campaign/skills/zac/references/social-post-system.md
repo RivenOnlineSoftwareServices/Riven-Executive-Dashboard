@@ -142,8 +142,8 @@ People appear only in real photographs, never generated.
   order or diary.
 - Five or six screens, one action each, held about three seconds, with a
   highlight on what to tap. End card: what the viewer now has, then the logo.
-- One feature per video. No weight, body or before-and-after wording, no
-  health claims. English only.
+- One feature per video. No new weight, body or before-and-after wording and
+  no new health claims. English only.
 - Caption under 300 characters: **"New: [the thing], in [number] taps"**,
   one sentence on why it matters, the steps in one sentence, then the link or
   "Reply if you get stuck". Caption words go through Heyu.

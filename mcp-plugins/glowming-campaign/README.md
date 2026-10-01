@@ -8,8 +8,13 @@ The Glowming Summer Campaign 2026 for owners who work with their own Claude (bui
 | `zac` | Glowming designs: new adverts and posts, feed / story / square sizes, motion videos through Magnific, and brand critique. Renders are saved as new files and logged. |
 | `heyu` | Glowming wording: captions, headlines, advert text, the compliance check, and advice from advert results. |
 
-**Guard:** `hooks/hooks.json` checks every file write and shell command before it runs: nothing is
-deleted, renamed, moved or overwritten; Riaan's files and the tracking links are never changed.
+**Guard:** `hooks/guard.js` runs before every file write, shell command and connector call and checks
+it against an allow-list using the files on disk: `anton.md` append-only, caption tracking lines
+unchanged, no overwrite of pictures, videos or plans, nothing deleted, moved or renamed in the company
+folders. A second, content-only check looks at the text being written. Limits, stated plainly: a
+script run through the shell that saves a file without naming its folder cannot be seen, and
+the calendar workbook's cell changes are checked by the skill's steps, not by the guard; SharePoint
+version history is the undo for both.
 
 **Needs on the user's machine:** OneDrive syncing the shared project folder
 (`ROSS - Documents/_Riven-Claude/Glowming Summer Campaign`) and the SharePoint folder

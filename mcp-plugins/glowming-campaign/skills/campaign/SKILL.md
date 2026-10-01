@@ -30,9 +30,8 @@ Anton's Cowork has his OneDrive connected. Look for, by name:
 - product pictures and logos: `GSA All Assets/02_Products/All Products/`.
 
 If a folder cannot be found, tell Anton in one line which one is missing and ask him to open it in
-File Explorer once (OneDrive then downloads it). Never guess a path. When found, write the paths
-as a `## Folders` note at the top of `anton.md` (create the file if missing) so the next session
-does not search again.
+File Explorer once (OneDrive then downloads it). Never guess a path. Do not write machine paths
+into any shared file; the folder NAMES above are enough to find them again next time.
 
 ## 2. Start (do it silently when Anton first mentions the campaign in a session)
 
@@ -58,13 +57,17 @@ does not search again.
 | "I approve <thing>" / "Approved" | Write it under `## Decisions` in his next END block with his exact words and the date, and add a line to `todo-anton.md` ticked done. Riaan's side picks it up at its next start. |
 | "Ask Riaan …" / "Tell Riaan …" | Add it under `## Questions` in `anton.md` (and to `todo-anton.md` if it is a task for Riaan's side). Tell Anton Riaan's side sees it at its next start, and that for anything urgent he can also email or phone Riaan. |
 | "Switch an advert on/off", "change the budget" | Explain that this is done by hand in Meta Ads Manager (by Anton or Riaan); give him the exact advert names from `references/campaign-rules.md`. Cowork never changes Meta. |
-| "Send an email to …" | Write the email as a draft for Anton to send from his own mailbox. Do not send it yourself unless Anton says "send it" for that email. |
+| "Send an email to …" | Emails from Anton to a person (Riaan, a host, a supplier): write it as a draft in Anton's own mailbox; send it only if Anton says "send it" for that email. Emails to CUSTOMERS (newsletters, the R50 reminder, launch emails) are sent by Riaan's side: write the request in `anton.md` under `## Questions`. |
 | A general question about the campaign | Answer from the shared folder, the campaign rules, and the `collective` tools (Alice for Glowming facts). Say "I don't know" rather than guess. |
 
 ## 4. Anton's own files (always allowed)
 
-`anton.md` (append-only log), `todo-anton.md`, everything under `work/anton/`. Never edit
-`riaan.md`, `todo-riaan.md`, `README.md`, or files someone else added.
+- `anton.md` is APPEND-ONLY: add new lines at the end; never change or remove an earlier line
+  (the guard refuses it). After appending, re-open the file and check the earlier text is intact.
+- `todo-anton.md`: add items, tick items (`- [x] <item> (done YYYY-MM-DD)`); never remove an item.
+- `work/anton/`: new files freely; an existing picture or video is never overwritten (new version
+  instead).
+Never edit `riaan.md`, `todo-riaan.md`, `README.md`, or files someone else added.
 
 ## 5. End (when Anton says he is done, or before a long pause)
 

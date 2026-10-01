@@ -40,7 +40,8 @@ LINK - paste the whole link into the post (...):
 English only. Hashtags: ...
 ```
 
-- Only the post text, `Headline:`, `Short line:` and `Button:` values may change.
+- Only the post text and the `Headline:`, `Short line:`, `Button:` and `Approval status:` values
+  may change. `Approval status:` changes only as described below.
 - The `LINK` lines, the title lines and the last line are never changed. Before saving, compare
   them with the old file character by character; if any differ, do not save.
 - `Approval status:` becomes `Changed (Anton, <D Mon YYYY>)`.
@@ -59,7 +60,8 @@ File: `02 Posting calendar.xlsx`.
 - Never: delete a row, column or sheet; change a column heading; sort or re-order the sheet; change
   formulas.
 - Checks: dates are real dates between 25 Sep and 30 Nov 2026; an advert code named in a row
-  exists (see `campaign-rules.md`); the owner is a person's name.
+  has a folder under `01 Ready to post` (the folder names are the only list of codes); the owner
+  is a person's name.
 - If the workbook is open elsewhere or locked, stop and tell Anton; do not save a copy instead.
 
 ## Action 3: plans and approvals
@@ -85,4 +87,5 @@ Folder: the advert's own folder under `01 Ready to post/<Step folder>/<advert fo
 
 Read-only. If Anton asks for a change elsewhere (the website, Meta, emails to customers, Riaan's
 files, the README, competition rules), write it as a request to Riaan's side in `anton.md` under
-`## Questions` and tell Anton it is with Riaan.
+`## Questions` and tell Anton it is with Riaan. Anton's own emails to a person follow the email
+row in `SKILL.md` (a draft; sent only when he says "send it" for that email).
