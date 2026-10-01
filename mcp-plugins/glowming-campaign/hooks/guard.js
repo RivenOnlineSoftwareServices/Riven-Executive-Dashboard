@@ -249,7 +249,8 @@ const NET_CALL = /\b(curl|wget|iwr|irm|invoke-restmethod|invoke-webrequest)\b|\b
 // A claim word is then allowed only inside a WHOLE approved sentence (sentence boundaries on both
 // sides, so "Lose weight" never licenses "Lose weight twice as fast"; approvals under three words
 // are ignored, so "app" cannot mask "appetite"). Anything else is still refused, so this Claude
-// can never introduce a claim Anton did not approve word for word (Codex PR #17 round 1).
+// cannot introduce a LISTED claim word Anton did not approve word for word; unlisted wording is the
+// stated residual gap (see RESIDUAL GAP below).
 const APPROVAL_LINE = /^CLAIM APPROVED \|[^|]*\|\s*"(.+)"\s*$/;
 // Wording the owners approved before this rule existed, live in the adverts (campaign-rules.md).
 const BUILT_IN_APPROVALS = ['gut health, energy, immunity and skin glow', 'gut health · energy · immunity · skin glow'];
@@ -341,9 +342,17 @@ function unapprovedClaimCount(text, approvals, isLog) {
 
 /** Shell text judged per quoted string: echo "<approved sentence>" is that sentence, nothing more. */
 function unapprovedShellClaims(cmd, approvals) {
+  // A quoted string earns the approval exemption only when it STANDS ALONE: whitespace or the start
+  // before it, and after it only an operator or the end. Adjacent strings ("A"" B" or "A" "B")
+  // are joined by the shell into one sentence, so those are judged with NO approvals (Codex PR #17
+  // round 4, P1).
   let n = 0;
-  const rest = String(cmd || '').replace(/"((?:[^"\\]|\\.)*)"|'([^']*)'/g, (m, dq, sq) => {
-    n += unapprovedClaimCount(dq !== undefined ? dq : sq, approvals, false);
+  const src = String(cmd || '');
+  const rest = src.replace(/"((?:[^"\\]|\\.)*)"|'([^']*)'/g, (m, dq, sq, at) => {
+    const before = src.slice(0, at);
+    const after = src.slice(at + m.length);
+    const alone = /(^|\s)$/.test(before) && /^\s*($|[;|&>)]|\d>)/.test(after);
+    n += unapprovedClaimCount(dq !== undefined ? dq : sq, alone ? approvals : [], false);
     return ' ; ';
   });
   return n + unapprovedClaimCount(rest, approvals, false);
@@ -359,7 +368,8 @@ const BENEFIT_CLAIMS = /\bgut\s+(health|cleans\w*)|\bbloat\w*|\bdigest(ion|ive)\
 // PROPOSES a claim) is then the only line. A meaning-based check cannot be a type:prompt hook (it
 // cannot read Anton's approvals, so it would veto exactly what the owner ruling allows). The
 // follow-up is a command hook that reads anton.md and asks `claude -p` to classify sentences, or a
-// type:agent hook, validated in Cowork 2.1.284 before it ships (BTM task owed).
+// type:agent hook, validated in Cowork 2.1.284 before it ships (BTM TASK-20261001-001,
+// glowming-summer-campaign-2026).
 // Claims never allowed in anything this Claude writes or generates (owner rulings, 2026-10-01),
 // unless Anton approved the exact words (see approvedClaims above).
 const BANNED_CLAIMS = /weight[\s-]?(loss|control|management)|\bslimming|\bslim\s+down|fat[\s-]?(loss|burn)|(lose|losing|burn|burns|burning|melt)\s+(the\s+)?(fat|kg|kilos?|weight)|belly\s+fat|\d+\s*kg\b|\bdetox|appetite|craving|\bmetaboli|\bcures?\b|\bheals?\b|clinically\s+proven/i;
