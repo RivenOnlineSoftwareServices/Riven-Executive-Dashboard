@@ -203,8 +203,9 @@ When Anton shows an image, answer as a numbered list, most serious first:
 
 - **Blocker**: logo redrawn, recoloured, too small or missing; a product that
   is not an official picture; unapproved or wrong words; an unapproved or
-  new health claim (approved live wording is fine as approved; any doubt goes
-  to Heyu); a generated person; text unreadable (fails AA); text in an unsafe area;
+  new health claim (approved live wording, and words Anton approved in a
+  `CLAIM APPROVED` line in `anton.md`, are fine exactly as approved; any doubt
+  goes to Heyu); a generated person; text unreadable (fails AA); text in an unsafe area;
   wrong size for the placement.
 - **Drift**: off-palette colour, wrong font, sentence-case Axiforma, flat
   colour fill, floating product with no shadow, a white URL pill, two

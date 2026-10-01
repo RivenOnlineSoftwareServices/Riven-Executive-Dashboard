@@ -415,6 +415,115 @@ allow('Magnific upload of a source photo', { tool_name: 'mcp__magnific__creation
 block('a Magnific prompt with a detox claim', { tool_name: 'mcp__magnific__images_generate', tool_input: { prompt: 'detox drink on a beach' } });
 block('a Magnific prompt with an appetite claim', { tool_name: 'mcp__magnific__images_generate', tool_input: { prompt: 'drink that reduces your appetite' } });
 
+// ---- Anton's approved claims (Riaan's standing rule, 2026-10-01) --------------------------------
+// Anton's explicit approval of EXACT words overrides the claim rules. The approval lives in
+// anton.md as CLAIM APPROVED | <time> | "<words>"; only those words pass, nothing else does.
+{
+  const APPROVED = 'For bloating relief, reduced cravings, gut cleansing, fat burning, immunity and skin glow.';
+  const approvalLine = 'CLAIM APPROVED | 2026-10-01 15:40 SAST | "' + APPROVED + '"';
+  const approve = () => fs.appendFileSync(files.anton, approvalLine + NL);
+  const base = path.dirname(path.dirname(shared)); // the folder that holds ROSS - Documents
+
+  allow('append a CLAIM APPROVED line to anton.md', W(files.anton, fs.readFileSync(files.anton, 'utf8') + approvalLine + NL));
+  block('an approval-shaped line in a caption does not approve itself',
+    W(files.caption, caption.replace('Old post text.', approvalLine)));
+  block('without an approval, the approved words are still refused', W(files.caption, caption.replace('Old post text.', APPROVED)));
+
+  approve();
+  allow('Anton-approved words in a caption (Write)', W(files.caption, caption.replace('Old post text.', APPROVED)));
+  allow('Anton-approved words, different case (Edit)', E(files.caption, 'Old post text.', APPROVED.toUpperCase()));
+  block('a DIFFERENT claim is still refused after an approval', W(files.caption, caption.replace('Old post text.', 'Lose weight fast.')));
+  block('approved words PLUS an unapproved claim are refused', W(files.caption, caption.replace('Old post text.', APPROVED + ' Lose weight fast.')));
+  block('part of the approved words reworded into a new claim is refused', W(files.caption, caption.replace('Old post text.', 'Reduced cravings guaranteed.')));
+  allow('a shell-written draft with Anton-approved words', B('echo "' + APPROVED + '" > /tmp/draft.txt', base));
+  block('a shell-written draft with an unapproved claim', B('echo "Lose weight fast" > /tmp/draft.txt', base));
+  // Codex PR #17 round 4: the shell joins adjacent strings into one (unapproved) sentence.
+  block('adjacent quoted strings cannot extend an approval', B('echo "' + APPROVED + '"" twice as fast." > /tmp/draft.txt', base));
+  block('separate quoted arguments cannot extend an approval', B('echo "' + APPROVED + '" "twice as fast." > /tmp/draft.txt', base));
+  block('a leading argument cannot prefix an approval', B('echo "Guaranteed: " "' + APPROVED + '" > /tmp/draft.txt', base));
+  block('an escaped semicolon is not a separator', B('echo Guaranteed:' + String.fromCharCode(92) + '; echo "' + APPROVED + '" > /tmp/draft.txt', base));
+  block('a second command before the approved echo gets no exemption', B('cd /tmp && echo "' + APPROVED + '" > /tmp/draft.txt', base));
+  allow('echo with a flag and the approved sentence alone is fine', B('echo -n "' + APPROVED + '" > /tmp/draft.txt', base));
+  allow('Anton-approved words in a Magnific prompt', { tool_name: 'mcp__magnific__images_generate', tool_input: { prompt: 'Pouch on a table with this text. ' + APPROVED }, cwd: base });
+  block('approved words glued into a longer prompt sentence are refused', { tool_name: 'mcp__magnific__images_generate', tool_input: { prompt: 'pouch on a table, text: ' + APPROVED }, cwd: base });
+  block('an unapproved claim in a Magnific prompt is still refused', { tool_name: 'mcp__magnific__images_generate', tool_input: { prompt: 'detox drink on a beach' }, cwd: base });
+  reset();
+
+  reset();
+
+  // Codex PR #17 round 1: whole sentences only, no tiny approvals, order-proof, benefit words too,
+  // one canonical log.
+  const rec = (words) => fs.appendFileSync(files.anton, 'CLAIM APPROVED | 2026-10-01 17:40 SAST | "' + words + '"' + NL);
+  rec('Lose weight fast with Glowming.');
+  block('an approved sentence EXTENDED into a stronger claim is refused',
+    W(files.caption, caption.replace('Old post text.', 'Lose weight fast with Glowming twice as fast.')));
+  allow('the approved sentence on its own is allowed', W(files.caption, caption.replace('Old post text.', 'Lose weight fast with Glowming.')));
+  // Codex PR #17 round 2: a wrapped line or a closing quote does not end the sentence.
+  block('an approved sentence continued on the next line is refused',
+    W(files.caption, caption.replace('Old post text.', 'Lose weight fast with Glowming' + NL + 'twice as fast.')));
+  block('an approved sentence continued after a closing quote is refused',
+    W(files.caption, caption.replace('Old post text.', '“Lose weight fast with Glowming” twice as fast.')));
+  // Codex PR #17 round 3: a digit or capitals on the next line, prose before an opening quote.
+  block('next line starting with a digit continues the sentence',
+    W(files.caption, caption.replace('Old post text.', 'Lose weight fast with Glowming' + NL + '2x faster.')));
+  block('next line in capitals continues the sentence',
+    W(files.caption, caption.replace('Old post text.', 'Lose weight fast with Glowming' + NL + 'TWICE AS FAST.')));
+  block('prose before an opening quote is part of the sentence',
+    W(files.caption, caption.replace('Old post text.', 'Guaranteed to “Lose weight fast with Glowming”.')));
+  block('a shell string with prose around the quoted approval is refused',
+    B('echo \'Guaranteed to "Lose weight fast with Glowming".\' > /tmp/draft.txt', path.dirname(path.dirname(shared))));
+  allow('an approved sentence in quotes, ending the sentence, is allowed',
+    W(files.caption, caption.replace('Old post text.', '“Lose weight fast with Glowming.”')));
+  rec('Detox.');
+  block('a one-word approval is ignored even as a whole sentence', W(files.caption, caption.replace('Old post text.', 'Detox.')));
+  reset();
+  rec('Daily detox drink. Reduced cravings all day.');
+  allow('a multi-sentence approval approves each of its sentences', W(files.caption, caption.replace('Old post text.', 'Reduced cravings all day. Daily detox drink.')));
+  reset();
+  // Kimi PR #17 rung 2, P1: a "Label: " is judged, never discarded.
+  block('a claim word used as a field label is refused (no approvals)', W(files.caption, caption.replace('Old post text.', 'Detox: feel lighter this summer.')));
+  block('a benefit label is refused (no approvals)', W(files.caption, caption.replace('Old post text.', 'Improves digestion: new this season.')));
+  rec('Lose weight fast with Glowming.');
+  block('a claim label cannot ride on an approved sentence', W(files.caption, caption.replace('Old post text.', 'Weight loss: Lose weight fast with Glowming.')));
+  allow('a harmless label before an approved sentence is fine', W(files.caption, caption.replace('Old post text.', 'Caption: Lose weight fast with Glowming.')));
+  allow('an approved sentence pasted with non-breaking spaces still matches',
+    W(files.caption, caption.replace('Old post text.', 'Lose' + String.fromCharCode(160) + 'weight fast with Glowming.')));
+  reset();
+  // Kimi P1 (question c): everyday planning and marketing words are not claims.
+  allow('a mood board is not a claim', W(files.caption, caption.replace('Old post text.', 'Mood board review with Zac.')));
+  allow('customer pain points are not a claim', W(files.caption, caption.replace('Old post text.', 'Pain points carousel for Step 2.')));
+  allow('a weekly digest is not a claim', W(files.caption, caption.replace('Old post text.', 'Weekly digest of advert results.')));
+  allow('a social idiom is not a claim', W(files.caption, caption.replace('Old post text.', 'Core memory: first sip on a Sleepy Sunday.')));
+  // Codex PR #17 round 3 strings: now listed.
+  block('a cancer-risk claim is refused', W(files.caption, caption.replace('Old post text.', 'Glowming lowers your risk of cancer.')));
+  block('a breathing claim is refused', W(files.caption, caption.replace('Old post text.', 'Glowming helps you breathe easier.')));
+  allow('the owner-approved live bubble (dots) is allowed', W(files.caption, caption.replace('Old post text.', 'Gut health · energy · immunity · skin glow')));
+  block('an unapproved disease claim is refused', W(files.caption, caption.replace('Old post text.', 'Prevents diabetes.')));
+  block('an unapproved benefit claim is refused', W(files.caption, caption.replace('Old post text.', 'Improves digestion.')));
+  block('heart and joint claims are refused', W(files.caption, caption.replace('Old post text.', 'Supports heart health and reduces joint pain.')));
+  block('a sleep claim is refused', W(files.caption, caption.replace('Old post text.', 'Improves sleep quality.')));
+  allow('everyday ritual wording is not a claim', W(files.caption, caption.replace('Old post text.', 'Your daily Glowming Ritual, four flavours, one sachet.')));
+  allow('the owner-approved live line is allowed in new text', W(files.caption, caption.replace('Old post text.', 'Gut health, energy, immunity and skin glow.')));
+  {
+    // An anton.md somewhere else (not .../_Riven-Claude/Glowming Summer Campaign/) approves nothing.
+    const stray = path.join(camp, 'Glowming Summer Campaign');
+    fs.mkdirSync(stray, { recursive: true });
+    fs.writeFileSync(path.join(stray, 'anton.md'), 'CLAIM APPROVED | 2026-10-01 | "Melts belly fat overnight."' + NL);
+    block('an approval in a stray anton.md is ignored',
+      { tool_name: 'Write', tool_input: { file_path: files.caption, content: caption.replace('Old post text.', 'Melts belly fat overnight.') }, cwd: stray });
+    fs.rmSync(stray, { recursive: true, force: true });
+  }
+  reset();
+
+  // The approval is recorded BEFORE the command (and so before the snapshot), as it is in use.
+  approve(); ORIGINAL.anton = fs.readFileSync(files.anton);
+  shell('Anton-approved words in a calendar cell are kept', B('python cal.py "' + files.calendar + '"'),
+    () => makeXlsx(files.calendar, ['Mon 5 Oct', LINK, APPROVED]), 'kept');
+  approve(); ORIGINAL.anton = fs.readFileSync(files.anton);
+  shell('an unapproved claim in a calendar cell is still undone', B('python cal.py "' + files.calendar + '"'),
+    () => makeXlsx(files.calendar, ['Mon 5 Oct', LINK, 'Lose weight fast with Glowming']), 'undone');
+}
+
 fs.rmSync(calPy, { force: true });
 // Nothing may be left behind for a later post.js run to act on.
 post.verifyAll();

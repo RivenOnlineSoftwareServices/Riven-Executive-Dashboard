@@ -167,13 +167,15 @@ function checkWrite(tool, input, cwd, before) {
     const fragment = tool === 'Write' ? input.content
       : tool === 'MultiEdit' ? (input.edits || []).map((e) => e.new_string || '').join(NL)
         : (input.new_string || input.new_source || '');
+    const approvals = approvedClaims(path.dirname(raw), cwd);
+    const isLog = np.endsWith(SHARED + 'anton.md'); // (`after` is a local string in this block)
     const gained = (t) => {
       if (typeof t !== 'string') return false;
-      const was = curNow ? (unify(curNow).match(new RegExp(BANNED_CLAIMS.source, 'gi')) || []).length : 0;
-      return (unify(t).match(new RegExp(BANNED_CLAIMS.source, 'gi')) || []).length > was;
+      const was = curNow ? unapprovedClaimCount(curNow, approvals, isLog) : 0;
+      return unapprovedClaimCount(t, approvals, isLog) > was;
     };
-    if (gained(after) || (after === null && typeof fragment === 'string' && BANNED_CLAIMS.test(fragment))) {
-      return 'That text contains a weight-loss, slimming, detox, appetite, craving, cure or "clinically proven" claim, which is never allowed. Remove it.';
+    if (gained(after) || (after === null && typeof fragment === 'string' && unapprovedClaimCount(fragment, approvals, isLog) > 0)) {
+      return CLAIM_REFUSAL;
     }
   }
   // `before` lets post.js judge a change a shell command already made, against the copy taken first.
@@ -240,7 +242,139 @@ const CODE_WRITE = /set-content|add-content|out-file|copy-item|open\([^)]*['"][w
 // cover him), and every way of changing adverts, the shop or sending email would go through one,
 // so the whole class is refused rather than guessing which methods write (Codex round 5).
 const NET_CALL = /\b(curl|wget|iwr|irm|invoke-restmethod|invoke-webrequest)\b|\b(requests|httpx|aiohttp|urllib3?)\b|urlopen|http\.client|\bfetch\s*\(|\bwebsocket|\baxios\b|xmlhttprequest|\bsmtplib\b|\bsendmail\b|send_mail\(|net\.webclient|\bsocket\.|require\(\s*['"](node:)?(https?|http2|net|tls|dgram)['"]\s*\)|from\s+['"](node:)?(https?|http2|net|tls|dgram)['"]|\bhttps?\.(request|get)\(|graph\.facebook\.com|graph\.microsoft\.com|myshopify\.com|api\.resend\.com|api\.sendgrid\.com/i;
-// Claims that are never allowed in anything this Claude writes or generates (owner rulings, 2026-10-01).
+// Approved claims (Riaan's standing rule, 2026-10-01: "Yes it actually does override when coming
+// from Anton"). Anton's explicit approval of EXACT words overrides the claim rules. His Claude
+// records each approval as one appended line in anton.md:
+//   CLAIM APPROVED | <YYYY-MM-DD HH:MM SAST> | "<the exact words>"
+// A claim word is then allowed only inside a WHOLE approved sentence (sentence boundaries on both
+// sides, so "Lose weight" never licenses "Lose weight twice as fast"; approvals under three words
+// are ignored, so "app" cannot mask "appetite"). Anything else is still refused, so this Claude
+// cannot introduce a LISTED claim word Anton did not approve word for word; unlisted wording is the
+// stated residual gap (see RESIDUAL GAP below).
+const APPROVAL_LINE = /^CLAIM APPROVED \|[^|]*\|\s*"(.+)"\s*$/;
+// Wording the owners approved before this rule existed, live in the adverts (campaign-rules.md).
+const BUILT_IN_APPROVALS = ['gut health, energy, immunity and skin glow', 'gut health · energy · immunity · skin glow'];
+// ONE log, at its canonical place only: .../_Riven-Claude/Glowming Summer Campaign/anton.md.
+const LOG_TAIL = ['_Riven-Claude', 'Glowming Summer Campaign', 'anton.md'];
+
+/** The canonical anton.md: searched from the session folder first, then from `from`; or null. */
+function campaignLog(from, cwd) {
+  for (const start of [cwd || process.cwd(), from].filter(Boolean)) {
+    let dir = path.resolve(start);
+    for (let i = 0; i < 12; i++) {
+      for (const p of [path.join(dir, 'ROSS - Documents', ...LOG_TAIL), path.join(dir, ...LOG_TAIL), path.join(dir, 'anton.md')]) {
+        if (norm(p).endsWith(norm(LOG_TAIL.join('/'))) && fs.existsSync(p)) return p;
+      }
+      const parent = path.dirname(dir);
+      if (parent === dir) break;
+      dir = parent;
+    }
+  }
+  return null;
+}
+
+/** Lower case, CRLF unified, runs of spaces/tabs collapsed: the form approvals are matched in. */
+function claimForm(s) {
+  // Non-breaking and figure spaces (pasted from Word or Teams) count as spaces (Kimi, P3).
+  return unify(String(s || '')).toLowerCase().replace(/[ \t\u00A0\u2007\u202F]+/g, ' ');
+}
+
+/** Every approved claim text (claim form, three words or more), built-in ones included. */
+function approvedClaims(from, cwd) {
+  const log = campaignLog(from, cwd);
+  const text = log ? readText(log) : null;
+  const recorded = text === null ? [] : unify(text).split(NL).map((l) => (l.trim().match(APPROVAL_LINE) || [])[1]);
+  return BUILT_IN_APPROVALS.concat(recorded.filter(Boolean))
+    .map((t) => claimForm(t).trim()); // split into sentences and the 3-word minimum: unapprovedClaimCount
+}
+
+// A line that starts a new field or item: "Short line: ...", "- ...", "• ...", "1. ...".
+const FIELD_START = /^\s*([A-Za-z][A-Za-z ()/-]{0,30}:\s|[-•*·]\s|\d+[.)]\s)/;
+
+/**
+ * The sentence units of a text, each in claim form without quotes, labels or end punctuation.
+ * A sentence ends ONLY at . ! ? (or the end). A line break does not end one unless the next line
+ * starts a new field or item, and quotes never do (Codex PR #17 round 3, P1): an approval must
+ * equal a WHOLE unit, so nothing before or after it can ride along.
+ */
+function sentenceUnits(text) {
+  const lines = unify(String(text || '')).split(NL);
+  const blocks = [];
+  let heading = true; // a line ending in ':' ("CAPTION (post text):") is a heading: the next line starts anew
+  for (const line of lines) {
+    if (!line.trim()) { blocks.push(''); heading = true; continue; }
+    if (heading || FIELD_START.test(line)) {
+      // A "Label: " is judged as its OWN unit, never thrown away: "Detox: feel lighter." must
+      // still count "detox", and "Weight loss: <approved>." must not ride on the approval (Kimi,
+      // PR #17 rung 2, P1). Bullets and numbers carry no words, so only a label is kept.
+      const m = line.match(FIELD_START);
+      if (m && /:\s$/.test(m[1])) blocks.push(m[1].replace(/:\s$/, '') + '.');
+      blocks.push(line.replace(FIELD_START, ''));
+    } else blocks[blocks.length - 1] += ' ' + line;
+    heading = /:\s*$/.test(line);
+  }
+  const units = [];
+  for (const b of blocks) {
+    for (const s of b.split(/(?<=[.!?]["”']?)\s+/)) {
+      const u = claimForm(s).trim().replace(/^["“'”]+|["“'”]+$/g, '').replace(/[.!?]+["”']?$/, '').replace(/^["“'”]+|["“'”]+$/g, '').trim();
+      if (u) units.push(u);
+    }
+  }
+  return units;
+}
+
+/** How many claim words `text` holds OUTSIDE whole approved sentences. `isLog` skips approval lines. */
+function unapprovedClaimCount(text, approvals, isLog) {
+  let t = unify(String(text || ''));
+  if (isLog) t = t.split(NL).filter((l) => !APPROVAL_LINE.test(l.trim())).join(NL);
+  // Every approval is itself split into sentence units, so a multi-sentence approval approves each
+  // of its sentences, and the order approvals were recorded in cannot matter (round 1, P2).
+  const ok = new Set();
+  for (const a of approvals) for (const u of sentenceUnits(a)) if (u.split(' ').length >= 3) ok.add(u);
+  let n = 0;
+  for (const u of sentenceUnits(t)) {
+    if (ok.has(u)) continue;
+    n += (u.match(new RegExp(BANNED_CLAIMS.source, 'gi')) || []).length
+      + (u.match(new RegExp(BENEFIT_CLAIMS.source, 'gi')) || []).length;
+  }
+  return n;
+}
+
+/** Shell text judged per quoted string: echo "<approved sentence>" is that sentence, nothing more. */
+function unapprovedShellClaims(cmd, approvals) {
+  // A quoted string earns the approval exemption only when it STANDS ALONE: whitespace or the start
+  // before it, and after it only an operator or the end. Adjacent strings ("A"" B" or "A" "B")
+  // are joined by the shell into one sentence, so those are judged with NO approvals (Codex PR #17
+  // round 4, P1).
+  let n = 0;
+  const src = String(cmd || '');
+  const rest = src.replace(/"((?:[^"\\]|\\.)*)"|'([^']*)'/g, (m, dq, sq, at) => {
+    const before = src.slice(0, at);
+    const after = src.slice(at + m.length);
+    // ...and no shell structure is INFERRED at all (Codex PR #17 rounds 5-6: a leading argument,
+    // then an escaped \; that looks like a separator): the exemption applies only when the WHOLE
+    // command is exactly  echo|printf [flags] "<one string>" [> or >> one file]  - nothing else.
+    const alone = /^\s*(echo|printf)(\s+-[A-Za-z]+)*\s+$/.test(before) && /^\s*(>>?\s*[^\s;&|<>`$(){}]+)?\s*$/.test(after);
+    n += unapprovedClaimCount(dq !== undefined ? dq : sq, alone ? approvals : [], false);
+    return ' ; ';
+  });
+  return n + unapprovedClaimCount(rest, approvals, false);
+}
+
+const CLAIM_REFUSAL = 'That text contains a health, benefit, weight-loss, detox, appetite, craving or cure claim that Anton has not approved word for word. Show Anton the exact sentence and the risk; only if he approves it, append CLAIM APPROVED | <date time SAST> | "<the exact sentence>" to anton.md first, then try again.';
+// Health, benefit and medical wording beyond the banned list: new wording of this kind also needs
+// Anton's recorded approval (it was the prompt hook's job before; Codex PR #17 round 1, P1).
+const BENEFIT_CLAIMS = /\bgut\s+(health|cleans\w*)|\bbloat\w*|\bdigest(ion|ive)\b|\bimmun\w*|\benerg(y|ise|ize|ising|izing)\b|skin\s+glow|glowing\s+skin|anti[\s-]?(ageing|aging|inflammatory)|\b(prevents?|treats?|treatment\s+for)\b|\bdiabetes|\bdiseases?\b|blood\s+(sugar|pressure)|cholesterol|\bcleans(e|es|ing)\b|heart\s+health|\bjoint\s+(pain|health|support)|\b(pain|joint)\s+relief|relieves?\s+pain|\bsleep\s+(quality|better|aid|support)|better\s+sleep|\binsomnia|\banxiety|\bdepress(ion|ive)|\bhormon\w*|\bliver\b|\bkidney|\bhair\s+(growth|loss)|\bwrinkl\w*|\binflamm\w*|\bfertilit\w*|\bbrain\s+(health|function)|\bheal(th)?y\s+weight|\bcancer|\btumou?r|\brisk\s+of\b|\bbreathe\s+(easier|better)|\b(boosts?|improves?|supports?|reduces?|relieves?|strengthens?|protects?|restores?|lowers?|balances?|regulates?|calms?)\s+(your\s+)?(the\s+)?(body|health|immune|gut|skin|energy|metabolism|sleep|mood|focus|heart|joints?|bones?|hair|nails|liver|digestion|circulation|stress|anxiety|blood|cholesterol|hormones?|risk)\b/i;
+// RESIDUAL GAP, stated plainly (PR #17): only LISTED words are enforced. A new claim worded with
+// none of them (for example "Twice as fast." on its own line after an approved sentence, or a
+// claim in words not listed here) is not caught by this guard; the heyu skill rule (Claude never
+// PROPOSES a claim) is then the only line. A meaning-based check cannot be a type:prompt hook (it
+// cannot read Anton's approvals, so it would veto exactly what the owner ruling allows). The
+// follow-up is a command hook that reads anton.md and asks `claude -p` to classify sentences, or a
+// type:agent hook, validated in Cowork 2.1.284 before it ships (BTM TASK-20261001-001,
+// glowming-summer-campaign-2026).
+// Claims never allowed in anything this Claude writes or generates (owner rulings, 2026-10-01),
+// unless Anton approved the exact words (see approvedClaims above).
 const BANNED_CLAIMS = /weight[\s-]?(loss|control|management)|\bslimming|\bslim\s+down|fat[\s-]?(loss|burn)|(lose|losing|burn|burns|burning|melt)\s+(the\s+)?(fat|kg|kilos?|weight)|belly\s+fat|\d+\s*kg\b|\bdetox|appetite|craving|\bmetaboli|\bcures?\b|\bheals?\b|clinically\s+proven/i;
 // Shell scripts are judged for redirects too (Python and JS are not: ">" there is not a redirect).
 const SHELL_SCRIPT = /\.(sh|bash|ps1|psm1|bat|cmd)$/i;
@@ -319,8 +453,8 @@ function checkBash(input, cwd, callId) {
   if (NET_CALL.test(full)) {
     return 'Web requests from the shell or a script are not allowed from this Claude (adverts, the shop and email are never changed this way). Use a connector to read, or ask Riaan\'s side.';
   }
-  if ((redirects || CODE_WRITE.test(full)) && BANNED_CLAIMS.test(full)) {
-    return 'That text contains a weight-loss, slimming, detox, appetite, craving, cure or "clinically proven" claim, which is never allowed. Remove it.';
+  if ((redirects || CODE_WRITE.test(full)) && unapprovedShellClaims(full, approvedClaims(null, cwd)) > 0) {
+    return CLAIM_REFUSAL;
   }
   if (inFolder && scripts.unreadable > 0) {
     return 'A script was started from a company folder but could not be read, so it was blocked to be safe.';
@@ -468,8 +602,8 @@ function checkMcp(tool, input, cwd) {
     return 'Deleting, moving or renaming through a connector is not allowed from this Claude. Ask Riaan\'s side if something must go.';
   }
   const strings = stringsIn(input, []);
-  if (!READ_ACTION.test(act) && BANNED_CLAIMS.test(strings.join(NL))) {
-    return 'That request contains a weight-loss, detox, appetite, cure or "clinically proven" claim, which is never allowed. Remove it.';
+  if (!READ_ACTION.test(act) && unapprovedClaimCount(strings.join(NL), approvedClaims(null, cwd), false) > 0) {
+    return CLAIM_REFUSAL;
   }
   if (SAFE_SERVERS.test(server)) return null;
   // A generic Graph caller names no verb: only an explicit GET is a read.
@@ -503,7 +637,7 @@ function decide(event) {
   return null;
 }
 
-module.exports = { decide, checkWrite, checkNewFile, isTextFile, norm, sha1, walkFiles, snapId, CALENDAR, BANNED_CLAIMS };
+module.exports = { decide, checkWrite, checkNewFile, isTextFile, norm, sha1, walkFiles, snapId, CALENDAR, BANNED_CLAIMS, approvedClaims, unapprovedClaimCount, unapprovedShellClaims, sentenceUnits };
 
 if (require.main === module) {
   let buf = '';
