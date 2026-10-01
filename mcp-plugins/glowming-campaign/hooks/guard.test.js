@@ -437,7 +437,8 @@ block('a Magnific prompt with an appetite claim', { tool_name: 'mcp__magnific__i
   block('part of the approved words reworded into a new claim is refused', W(files.caption, caption.replace('Old post text.', 'Reduced cravings guaranteed.')));
   allow('a shell-written draft with Anton-approved words', B('echo "' + APPROVED + '" > /tmp/draft.txt', base));
   block('a shell-written draft with an unapproved claim', B('echo "Lose weight fast" > /tmp/draft.txt', base));
-  allow('Anton-approved words in a Magnific prompt', { tool_name: 'mcp__magnific__images_generate', tool_input: { prompt: 'pouch on a table, text: ' + APPROVED }, cwd: base });
+  allow('Anton-approved words in a Magnific prompt', { tool_name: 'mcp__magnific__images_generate', tool_input: { prompt: 'Pouch on a table with this text. ' + APPROVED }, cwd: base });
+  block('approved words glued into a longer prompt sentence are refused', { tool_name: 'mcp__magnific__images_generate', tool_input: { prompt: 'pouch on a table, text: ' + APPROVED }, cwd: base });
   block('an unapproved claim in a Magnific prompt is still refused', { tool_name: 'mcp__magnific__images_generate', tool_input: { prompt: 'detox drink on a beach' }, cwd: base });
   reset();
 
@@ -455,6 +456,15 @@ block('a Magnific prompt with an appetite claim', { tool_name: 'mcp__magnific__i
     W(files.caption, caption.replace('Old post text.', 'Lose weight fast with Glowming' + NL + 'twice as fast.')));
   block('an approved sentence continued after a closing quote is refused',
     W(files.caption, caption.replace('Old post text.', '“Lose weight fast with Glowming” twice as fast.')));
+  // Codex PR #17 round 3: a digit or capitals on the next line, prose before an opening quote.
+  block('next line starting with a digit continues the sentence',
+    W(files.caption, caption.replace('Old post text.', 'Lose weight fast with Glowming' + NL + '2x faster.')));
+  block('next line in capitals continues the sentence',
+    W(files.caption, caption.replace('Old post text.', 'Lose weight fast with Glowming' + NL + 'TWICE AS FAST.')));
+  block('prose before an opening quote is part of the sentence',
+    W(files.caption, caption.replace('Old post text.', 'Guaranteed to “Lose weight fast with Glowming”.')));
+  block('a shell string with prose around the quoted approval is refused',
+    B('echo \'Guaranteed to "Lose weight fast with Glowming".\' > /tmp/draft.txt', path.dirname(path.dirname(shared))));
   allow('an approved sentence in quotes, ending the sentence, is allowed',
     W(files.caption, caption.replace('Old post text.', '“Lose weight fast with Glowming.”')));
   rec('app');

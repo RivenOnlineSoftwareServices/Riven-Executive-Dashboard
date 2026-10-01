@@ -283,39 +283,63 @@ function approvedClaims(from, cwd) {
   const text = log ? readText(log) : null;
   const recorded = text === null ? [] : unify(text).split(NL).map((l) => (l.trim().match(APPROVAL_LINE) || [])[1]);
   return BUILT_IN_APPROVALS.concat(recorded.filter(Boolean))
-    .map((t) => claimForm(t).trim().replace(/[.!?]+$/, '').trim())
-    .filter((t) => t.split(' ').length >= 3);
+    .map((t) => claimForm(t).trim()); // split into sentences and the 3-word minimum: unapprovedClaimCount
+}
+
+// A line that starts a new field or item: "Short line: ...", "- ...", "• ...", "1. ...".
+const FIELD_START = /^\s*([A-Za-z][A-Za-z ()/-]{0,30}:\s|[-•*·]\s|\d+[.)]\s)/;
+
+/**
+ * The sentence units of a text, each in claim form without quotes, labels or end punctuation.
+ * A sentence ends ONLY at . ! ? (or the end). A line break does not end one unless the next line
+ * starts a new field or item, and quotes never do (Codex PR #17 round 3, P1): an approval must
+ * equal a WHOLE unit, so nothing before or after it can ride along.
+ */
+function sentenceUnits(text) {
+  const lines = unify(String(text || '')).split(NL);
+  const blocks = [];
+  let heading = true; // a line ending in ':' ("CAPTION (post text):") is a heading: the next line starts anew
+  for (const line of lines) {
+    if (!line.trim()) { blocks.push(''); heading = true; continue; }
+    if (heading || FIELD_START.test(line)) blocks.push(line.replace(FIELD_START, ''));
+    else blocks[blocks.length - 1] += ' ' + line;
+    heading = /:\s*$/.test(line);
+  }
+  const units = [];
+  for (const b of blocks) {
+    for (const s of b.split(/(?<=[.!?]["”']?)\s+/)) {
+      const u = claimForm(s).trim().replace(/^["“'”]+|["“'”]+$/g, '').replace(/[.!?]+["”']?$/, '').replace(/^["“'”]+|["“'”]+$/g, '').trim();
+      if (u) units.push(u);
+    }
+  }
+  return units;
 }
 
 /** How many claim words `text` holds OUTSIDE whole approved sentences. `isLog` skips approval lines. */
 function unapprovedClaimCount(text, approvals, isLog) {
   let t = unify(String(text || ''));
   if (isLog) t = t.split(NL).filter((l) => !APPROVAL_LINE.test(l.trim())).join(NL);
-  // Matching is case-blind, but the BOUNDARIES are judged on the original case: a new line only
-  // ends the sentence when the next line starts a new one (capital, digit, bullet), so
-  // "...Glowming\ntwice as fast." is one sentence; a closing quote ends it only before sentence
-  // punctuation or the end (Codex PR #17 round 2, P1).
-  const orig = unify(t).replace(/[ \t]+/g, ' ');
-  t = orig.toLowerCase();
-  // Find every approved span on the ORIGINAL text first, then mask them all at once, so one
-  // approval can never cut into another (Codex PR #17 round 1, P2).
-  const spans = [];
-  for (const a of approvals) {
-    for (let i = t.indexOf(a); i >= 0; i = t.indexOf(a, i + 1)) {
-      const before = orig.slice(0, i);
-      const rest = orig.slice(i + a.length);
-      const okBefore = /(^|[.!?]["”']?\s|\n|:\s|\|\s?|·\s?|•\s?)["“']?\s*$/.test(before) || /^\s*["“']?\s*$/.test(before)
-        || /\s["“']$/.test(before); // a quoted sentence: echo "<approved words>"
-      const okAfter = /^["”']?[.!?]+["”']?(\s|$)/.test(rest) || /^["”']?\s*$/.test(rest)
-        || /^["”']?[ ]?\n\s*([A-Z0-9•*#-]|$)/.test(rest) || /^["”']?\s?(·|\|)/.test(rest);
-      if (okBefore && okAfter) spans.push([i, i + a.length]);
-    }
+  // Every approval is itself split into sentence units, so a multi-sentence approval approves each
+  // of its sentences, and the order approvals were recorded in cannot matter (round 1, P2).
+  const ok = new Set();
+  for (const a of approvals) for (const u of sentenceUnits(a)) if (u.split(' ').length >= 3) ok.add(u);
+  let n = 0;
+  for (const u of sentenceUnits(t)) {
+    if (ok.has(u)) continue;
+    n += (u.match(new RegExp(BANNED_CLAIMS.source, 'gi')) || []).length
+      + (u.match(new RegExp(BENEFIT_CLAIMS.source, 'gi')) || []).length;
   }
-  const chars = t.split('');
-  for (const [s, e] of spans) for (let k = s; k < e; k++) chars[k] = ' ';
-  const masked = chars.join('');
-  return (masked.match(new RegExp(BANNED_CLAIMS.source, 'gi')) || []).length
-    + (masked.match(new RegExp(BENEFIT_CLAIMS.source, 'gi')) || []).length;
+  return n;
+}
+
+/** Shell text judged per quoted string: echo "<approved sentence>" is that sentence, nothing more. */
+function unapprovedShellClaims(cmd, approvals) {
+  let n = 0;
+  const rest = String(cmd || '').replace(/"((?:[^"\\]|\\.)*)"|'([^']*)'/g, (m, dq, sq) => {
+    n += unapprovedClaimCount(dq !== undefined ? dq : sq, approvals, false);
+    return ' ; ';
+  });
+  return n + unapprovedClaimCount(rest, approvals, false);
 }
 
 const CLAIM_REFUSAL = 'That text contains a health, benefit, weight-loss, detox, appetite, craving or cure claim that Anton has not approved word for word. Show Anton the exact sentence and the risk; only if he approves it, append CLAIM APPROVED | <date time SAST> | "<the exact sentence>" to anton.md first, then try again.';
@@ -406,7 +430,7 @@ function checkBash(input, cwd, callId) {
   if (NET_CALL.test(full)) {
     return 'Web requests from the shell or a script are not allowed from this Claude (adverts, the shop and email are never changed this way). Use a connector to read, or ask Riaan\'s side.';
   }
-  if ((redirects || CODE_WRITE.test(full)) && unapprovedClaimCount(full, approvedClaims(null, cwd), false) > 0) {
+  if ((redirects || CODE_WRITE.test(full)) && unapprovedShellClaims(full, approvedClaims(null, cwd)) > 0) {
     return CLAIM_REFUSAL;
   }
   if (inFolder && scripts.unreadable > 0) {
@@ -590,7 +614,7 @@ function decide(event) {
   return null;
 }
 
-module.exports = { decide, checkWrite, checkNewFile, isTextFile, norm, sha1, walkFiles, snapId, CALENDAR, BANNED_CLAIMS, approvedClaims, unapprovedClaimCount };
+module.exports = { decide, checkWrite, checkNewFile, isTextFile, norm, sha1, walkFiles, snapId, CALENDAR, BANNED_CLAIMS, approvedClaims, unapprovedClaimCount, unapprovedShellClaims, sentenceUnits };
 
 if (require.main === module) {
   let buf = '';
