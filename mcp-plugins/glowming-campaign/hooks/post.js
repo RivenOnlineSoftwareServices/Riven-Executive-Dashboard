@@ -86,9 +86,10 @@ function judgeChange(entry, nowBuf, cwd) {
       if (!calendarLinks.linksKept(calendarLinks.cellLinks(entry.backup), calendarLinks.cellLinks(entry.path))) {
         return 'a tracking link in the posting calendar was changed, moved or removed.';
       }
-      const was = new Set(calendarLinks.cellTexts(entry.backup).values());
-      for (const text of calendarLinks.cellTexts(entry.path).values()) {
-        if (!was.has(text) && guard.BANNED_CLAIMS.test(text)) {
+      // Cell by cell: a claim already in one cell does not license copying it into another (Codex r8).
+      const was = calendarLinks.cellTexts(entry.backup);
+      for (const [cell, text] of calendarLinks.cellTexts(entry.path)) {
+        if (was.get(cell) !== text && guard.BANNED_CLAIMS.test(text)) {
           return 'a calendar cell now carries a weight-loss, detox, appetite, craving or cure claim.';
         }
       }

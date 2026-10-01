@@ -238,22 +238,40 @@ const SHELL_SCRIPT = /\.(sh|bash|ps1|psm1|bat|cmd)$/i;
 // (scripts contain arrows and comparisons that are not redirects).
 const REDIRECT = /(^|[^=\-<>])(&|\d)?>{1,2}(?![&>=])/;
 // Code that hides what it runs: blocked everywhere, Anton never needs it.
-const HIDDEN_CODE = /-e(nc|ncodedcommand)?\s+[a-z0-9+/=]{16,}|-encodedcommand|frombase64string|base64\s+(-d|--decode)|b64decode|\beval\(|\bexec\(|\biex\b|invoke-expression|(^|[\s;&|])(python3?|py|node|ruby|perl)\s+-(\s|$)|(^|[\s;&|])(python3?|py|node)\s*<|\b(bash|sh|zsh)\s+-s\b|-command\s+-(\s|$)/i;
+const HIDDEN_CODE = /-e(nc|ncodedcommand)?\s+[a-z0-9+/=]{16,}|-encodedcommand|frombase64string|base64\s+(-d|--decode)|b64decode|\beval\(|\bexec\(|\biex\b|invoke-expression|(^|[\s;&|])(python3?|py|node|ruby|perl)\s+-(\s|$)|(^|[\s;&|])(python3?|py|node)\s*<|\b(bash|sh|zsh)\s+-s\b|-command\s+-(\s|$)|(^|[\s;&|(])(bash|sh|zsh|dash|ksh|pwsh|powershell|cmd)(\.exe)?\s*<|\|\s*(bash|sh|zsh|dash|ksh|pwsh|powershell|cmd|python3?|py|node|ruby|perl|php)(\.exe)?(\s|$)/i;
 const SCRIPT_FILE = /(?:"([^"]+\.(?:py|js|mjs|cjs|ts|ps1|psm1|sh|bash|bat|cmd|pl|rb|php))"|'([^']+\.(?:py|js|mjs|cjs|ts|ps1|psm1|sh|bash|bat|cmd|pl|rb|php))'|([^\s'"]+\.(?:py|js|mjs|cjs|ts|ps1|psm1|sh|bash|bat|cmd|pl|rb|php)))(?=$|[\s;&|)])/gi;
 
-/** The text of every script file a command runs, so a script is judged by what it DOES. */
+/**
+ * The text of every script file a command runs, and of every script THOSE scripts name (three
+ * levels deep, Codex round 8), so a script is judged by what it does. A script named deeper than
+ * that counts as unreadable.
+ */
 function scriptsRun(cmd, cwd) {
   let text = '';
   let shellText = '';
   let unreadable = 0;
-  let m;
-  SCRIPT_FILE.lastIndex = 0;
-  while ((m = SCRIPT_FILE.exec(cmd)) !== null) {
-    const file = m[1] || m[2] || m[3];
-    const body = readText(realLocation(file, cwd));
-    if (body === null) { unreadable++; continue; }
-    text += NL + body.slice(0, 500000);
-    if (SHELL_SCRIPT.test(file)) shellText += NL + body.slice(0, 500000);
+  const seen = new Set();
+  let frontier = [cmd];
+  for (let depth = 0; depth < 4 && frontier.length; depth++) {
+    const next = [];
+    for (const src of frontier) {
+      const re = new RegExp(SCRIPT_FILE.source, 'gi');
+      let m;
+      while ((m = re.exec(src)) !== null) {
+        const file = m[1] || m[2] || m[3];
+        const where = realLocation(file, cwd);
+        if (seen.has(where)) continue;
+        seen.add(where);
+        if (depth === 3) { unreadable++; continue; }
+        const body = readText(where);
+        if (body === null) { unreadable++; continue; }
+        const part = body.slice(0, 500000);
+        text += NL + part;
+        if (SHELL_SCRIPT.test(file)) shellText += NL + part;
+        next.push(part);
+      }
+    }
+    frontier = next;
   }
   return { text, shellText, unreadable };
 }
@@ -300,7 +318,7 @@ function checkBash(input, cwd, callId) {
 }
 
 // Commands that only read. Every part of a pipeline or chain must be one of these.
-const READ_ONLY_PART = /^\s*(ls|dir|cat|type|head|tail|less|more|grep|egrep|rg|findstr|wc|stat|file|du|pwd|echo|printf|sort|uniq|cut|tr|basename|dirname|realpath|readlink|test|true|get-childitem|gci|get-content|gc|select-string|test-path|get-item|measure-object|select-object|format-list|format-table|find(?![^|;&]*-(delete|exec|execdir|ok|fprint)))(\s|$)/i;
+const READ_ONLY_PART = /^\s*(ls|dir|cat|type|head|tail|less|more|grep|egrep|rg|findstr|wc|stat|file|du|pwd|echo|printf|cut|tr|basename|dirname|realpath|readlink|test|true|get-childitem|gci|get-content|gc|select-string|test-path|get-item|measure-object|select-object|format-list|format-table|find(?![^|;&]*-(delete|exec|execdir|ok|fprint)))(\s|$)/i;
 function isReadOnly(cmd) {
   const parts = cmd.split(/&&|\|\||[;|\n]/).map((p) => p.trim()).filter(Boolean);
   return parts.length > 0 && parts.every((p) => READ_ONLY_PART.test(p));
@@ -318,7 +336,11 @@ function foldersNamed(full, cwd, inFolder) {
     for (const t of seg.split(/[\s<>|;&(),]+/)) pieces.add(t);
   }
   for (const piece of pieces) {
-    if (!piece || !isProtected(norm(piece))) continue;
+    if (!piece) continue;
+    // A relative path is judged by where it LEADS from the session folder ("../../riaan.md"),
+    // not by whether its own text names a company folder (Codex round 8).
+    const looksLikePath = /[\\/]/.test(piece) || /^\.\.?$/.test(piece) || /\.[a-z0-9]{1,5}$/i.test(piece);
+    if (!isProtected(norm(piece)) && !(looksLikePath && piece.length < 1024 && isProtected(norm(realLocation(piece, cwd))))) continue;
     // Walk up from the named path to the nearest folder that exists: a file's folder, a glob's
     // folder, or the folder of a path followed by code.
     let p = realLocation(piece, cwd);

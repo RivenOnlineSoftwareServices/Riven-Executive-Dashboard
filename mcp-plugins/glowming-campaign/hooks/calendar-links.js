@@ -45,8 +45,33 @@ function zipParts(buf) {
   return parts;
 }
 
+/** XML entities decoded, numeric character references included (de&#116;ox is "detox", Codex round 8). */
 function decodeXml(s) {
-  return s.replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&apos;/g, "'");
+  return s
+    .replace(/&#x([0-9a-f]+);/gi, (m, h) => String.fromCodePoint(parseInt(h, 16)))
+    .replace(/&#(\d+);/g, (m, d) => String.fromCodePoint(parseInt(d, 10)))
+    .replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&apos;/g, "'")
+    .replace(/&amp;/g, '&');
+}
+
+/**
+ * Worksheet part -> the sheet's NAME, through xl/workbook.xml and its relationships, so cells are
+ * keyed by the sheet a person sees: swapping two sheets' targets cannot hide a moved link.
+ */
+function sheetNames(parts) {
+  const names = {};
+  const rels = {};
+  for (const m of (parts['xl/_rels/workbook.xml.rels'] || '').matchAll(/<Relationship\s+([^>]*?)\/?>/g)) {
+    const id = (m[1].match(/\bId="([^"]+)"/) || [])[1];
+    const target = (m[1].match(/\bTarget="([^"]+)"/) || [])[1];
+    if (id && target) rels[id] = 'xl/' + target.replace(/^\/?xl\//, '').replace(/^\//, '');
+  }
+  for (const m of (parts['xl/workbook.xml'] || '').matchAll(/<sheet\s+([^>]*?)\/?>/g)) {
+    const name = decodeXml((m[1].match(/\bname="([^"]+)"/) || [])[1] || '');
+    const id = (m[1].match(/\br:id="([^"]+)"/) || [])[1];
+    if (id && rels[id]) names[rels[id]] = 'sheet:' + name;
+  }
+  return names;
 }
 
 /** All the text inside the <t> elements of an XML fragment. */
@@ -65,8 +90,10 @@ function cellTexts(file) {
     ? [...parts['xl/sharedStrings.xml'].matchAll(/<si>([\s\S]*?)<\/si>/g)].map((m) => textOf(m[1]))
     : [];
   const out = new Map();
-  for (const [name, xml] of Object.entries(parts)) {
-    if (!/^xl\/worksheets\/[^/]+\.xml$/.test(name)) continue;
+  const names = sheetNames(parts);
+  for (const [part, xml] of Object.entries(parts)) {
+    if (!/^xl\/worksheets\/[^/]+\.xml$/.test(part)) continue;
+    const name = names[part] || part;
     for (const m of xml.matchAll(/<c\s+([^>]*?)(?:\/>|>([\s\S]*?)<\/c>)/g)) {
       const attrs = m[1];
       const inner = m[2] || '';
@@ -81,7 +108,7 @@ function cellTexts(file) {
       else if (v !== undefined) text = decodeXml(v);
       out.set(name + '!' + ref, text + (f ? ' =' + decodeXml(f) : ''));
     }
-    const relsName = name.replace(/^xl\/worksheets\//, 'xl/worksheets/_rels/') + '.rels';
+    const relsName = part.replace(/^xl\/worksheets\//, 'xl/worksheets/_rels/') + '.rels';
     const targets = {};
     for (const m of (parts[relsName] || '').matchAll(/<Relationship\s+([^>]*?)\/?>/g)) {
       const id = (m[1].match(/\bId="([^"]+)"/) || [])[1];

@@ -35,10 +35,16 @@ function makeXlsx(file, cells, links) {
   const rels = '<?xml version="1.0"?><Relationships>' + links.map((l, i) => '<Relationship Id="rId' + (i + 1) + '" Type="hyperlink" Target="' + l.target.replace(/&/g, '&amp;') + '" TargetMode="External"/>').join('') + '</Relationships>';
   const entries = [
     ['[Content_Types].xml', '<?xml version="1.0"?><Types/>'],
-    ['xl/sharedStrings.xml', '<?xml version="1.0"?><sst>' + cells.map((c) => '<si><t>' + c.replace(/&/g, '&amp;') + '</t></si>').join('') + '</sst>'],
+    // '&#...;' is kept as a raw XML character reference (a cell can hold one); other '&' are escaped.
+    ['xl/sharedStrings.xml', '<?xml version="1.0"?><sst>' + cells.map((c) => '<si><t>' + c.replace(/&(?!#)/g, '&amp;') + '</t></si>').join('') + '</sst>'],
     ['xl/worksheets/sheet1.xml', sheet],
   ];
   if (links.length) entries.push(['xl/worksheets/_rels/sheet1.xml.rels', rels]);
+  writeZip(file, entries);
+}
+
+/** A stored (uncompressed) zip of [name, text] entries. */
+function writeZip(file, entries) {
   const locals = [];
   const centrals = [];
   let offset = 0;
@@ -62,6 +68,24 @@ function makeXlsx(file, cells, links) {
   eocd.writeUInt32LE(0x06054b50, 0); eocd.writeUInt16LE(entries.length, 8); eocd.writeUInt16LE(entries.length, 10);
   eocd.writeUInt32LE(cd.length, 12); eocd.writeUInt32LE(offset, 16);
   fs.writeFileSync(file, Buffer.concat([...locals, cd, eocd]));
+}
+/** A two-sheet workbook: sheet A1 texts per sheet name, in the workbook order given by `order` (part names). */
+function makeTwoSheets(file, sheets, order) {
+  const sst = [];
+  const parts = {};
+  for (const [part, text] of Object.entries(sheets)) {
+    sst.push(text);
+    parts[part] = '<?xml version="1.0"?><worksheet><sheetData><row r="1"><c r="A1" t="s"><v>' + (sst.length - 1) + '</v></c></row></sheetData></worksheet>';
+  }
+  const wb = '<?xml version="1.0"?><workbook><sheets>' + order.map((part, i) => '<sheet name="' + ['Week 1', 'Week 2'][i] + '" sheetId="' + (i + 1) + '" r:id="rId' + (i + 1) + '"/>').join('') + '</sheets></workbook>';
+  const wbRels = '<?xml version="1.0"?><Relationships>' + order.map((part, i) => '<Relationship Id="rId' + (i + 1) + '" Type="worksheet" Target="' + part.replace('xl/', '') + '"/>').join('') + '</Relationships>';
+  writeZip(file, [
+    ['[Content_Types].xml', '<?xml version="1.0"?><Types/>'],
+    ['xl/workbook.xml', wb],
+    ['xl/_rels/workbook.xml.rels', wbRels],
+    ['xl/sharedStrings.xml', '<?xml version="1.0"?><sst>' + sst.map((c) => '<si><t>' + c.replace(/&/g, '&amp;') + '</t></si>').join('') + '</sst>'],
+    ...Object.entries(parts),
+  ]);
 }
 const LINK = 'https://glowming.co.za/pages/journey?utm_source=meta&utm_content=a5-b&utm_term=feed';
 const LINK2 = 'https://glowming.co.za/pages/journey?utm_source=meta&utm_content=a5-c&utm_term=feed';
@@ -110,7 +134,7 @@ function reset() {
   for (const [k, p] of Object.entries(files)) ORIGINAL[k] = fs.readFileSync(p);
 }
 reset();
-const same = (k) => Buffer.compare(fs.readFileSync(files[k]), ORIGINAL[k]) === 0;
+const same = (k) => fs.existsSync(files[k]) && Buffer.compare(fs.readFileSync(files[k]), ORIGINAL[k]) === 0;
 
 let passed = 0;
 const allow = (why, ev) => { assert.strictEqual(decide(ev), null, 'should ALLOW: ' + why); passed++; };
@@ -130,6 +154,9 @@ function shell(why, ev, effect, expect, after) {
   if (decision === null) {
     effect();
     result = post.verifyAll() === null ? 'kept' : 'undone';
+  }
+  if (result === 'undone') {
+    for (const k of Object.keys(files)) assert.ok(same(k), why + ': ' + k + ' must be exactly as before after the repair');
   }
   const ok = Array.isArray(expect) ? expect.includes(result) : result === expect;
   assert.ok(ok, why + ': expected ' + expect + ', got ' + result + (decision ? ' (' + decision + ')' : ''));
@@ -293,6 +320,38 @@ shell('a calendar cell gains a banned claim', B('python cal.py "' + files.calend
   const n0 = count();
   allow('a plain read in a company folder', B('ls "' + advert + '" | head -5'));
   assert.strictEqual(count(), n0, 'a plain read takes no copy'); passed++;
+}
+// Codex round 8.
+shell('sort -o over a protected file', B('sort -o "' + files.rules + '" /tmp/input.txt'), w('rules', 'sorted'), STOPPED);
+shell('a relative path climbing out of work/anton onto riaan.md', B('printf changed > ../../riaan.md', path.join(shared, 'work', 'anton')), w('riaan', 'changed'), STOPPED);
+block('bash reading a script from stdin', B('bash < /tmp/payload'));
+block('code piped into python', B('cat /tmp/x.py | python'));
+const inner = path.join(os.tmpdir(), 'gc-inner-' + process.pid + '.py');
+const outer = path.join(os.tmpdir(), 'gc-outer-' + process.pid + '.sh');
+fs.writeFileSync(inner, 'import urllib.request' + NL + 'urllib.request.urlopen("https://example.com")' + NL);
+fs.writeFileSync(outer, 'python "' + inner + '"' + NL);
+block('a script that starts another script making a web request', B('bash "' + outer + '"'));
+fs.rmSync(inner, { force: true }); fs.rmSync(outer, { force: true });
+shell('a calendar cell gains a claim written as XML character codes', B('python cal.py "' + files.calendar + '"'), () => makeXlsx(files.calendar, ['Mon 5 Oct', LINK, 'de&#116;ox']), 'undone');
+shell('an existing claim copied into a second cell', B('python cal.py "' + files.calendar + '"'), () => makeXlsx(files.calendar, ['Mon 5 Oct', LINK, 'x']), 'kept');
+{
+  makeXlsx(files.calendar, ['Mon 5 Oct', LINK, 'Lose weight fast']);
+  ORIGINAL.calendar = fs.readFileSync(files.calendar);
+  decide(B('python cal.py "' + files.calendar + '"'));
+  makeXlsx(files.calendar, ['Mon 5 Oct', LINK, 'Lose weight fast', 'Lose weight fast']);
+  assert.notStrictEqual(post.verifyAll(), null, 'an existing claim may not be copied into a new cell'); passed++;
+  assert.ok(same('calendar'), 'the calendar is back'); passed++;
+  reset();
+}
+{
+  // Two sheets swapped in the workbook: Week 1 now shows what Week 2 showed.
+  makeTwoSheets(files.calendar, { 'xl/worksheets/sheet1.xml': LINK, 'xl/worksheets/sheet2.xml': 'plain' }, ['xl/worksheets/sheet1.xml', 'xl/worksheets/sheet2.xml']);
+  ORIGINAL.calendar = fs.readFileSync(files.calendar);
+  decide(B('python cal.py "' + files.calendar + '"'));
+  makeTwoSheets(files.calendar, { 'xl/worksheets/sheet1.xml': LINK, 'xl/worksheets/sheet2.xml': 'plain' }, ['xl/worksheets/sheet2.xml', 'xl/worksheets/sheet1.xml']);
+  assert.notStrictEqual(post.verifyAll(), null, 'a link moved to another sheet by swapping sheets is caught'); passed++;
+  assert.ok(same('calendar'), 'the calendar is back'); passed++;
+  reset();
 }
 
 // ---- 4. Connectors ------------------------------------------------------------------------------
