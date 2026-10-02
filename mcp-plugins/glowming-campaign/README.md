@@ -24,7 +24,9 @@ The Glowming Summer Campaign 2026 for owners who work with their own Claude (bui
   file where new files are not allowed is removed. So a shell command is judged by what it DID, not
   by guessing from its text.
 
-A second, content-only check (a prompt hook) reads the text being written. Tests: `node
+A second, content-only check (a prompt hook) reads the text AFTER it is written and only warns:
+secrets, and health claims Meta, TikTok or the ARB could reject. It never blocks; the owners
+decide (Riaan, 2026-10-02: "Your job is to warn, not refuse"). Tests: `node
 hooks/guard.test.js`.
 
 **Known limits:** a script that writes a company file it never names (a path built at run time) in a
