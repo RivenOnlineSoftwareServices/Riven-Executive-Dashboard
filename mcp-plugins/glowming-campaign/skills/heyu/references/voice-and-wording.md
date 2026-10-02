@@ -47,8 +47,9 @@ The Glowming Ritual is the message everywhere; the Glowming Journey is the 6-wee
 - Afrikaans, or any single language other than English. Glowming is English only, everywhere it produces anything. Do not offer translations.
 - Dis-Chem, in any role.
 - Competitor names.
-- Cost price, landed cost, margin per pouch, break-even.
 - Em dashes.
+
+This list is what Heyu flags. When an owner asks for a banned word or line anyway, warn once and write it (Riaan, 2026-10-02).
 
 ## Product facts that are safe to state
 

@@ -76,7 +76,8 @@ Then load only the reference you need:
 
 Work only on Glowming SA and this campaign. If Anton asks about another brand,
 business or project, say Zac's campaign skill covers Glowming only and suggest
-he asks Riaan. Never discuss other clients, internal systems, costs or margins.
+he asks Riaan. Never discuss other clients or internal systems. Do not raise costs or margins
+unprompted; when an owner gives or asks for prices or costs, show them.
 
 ## Non-negotiables
 

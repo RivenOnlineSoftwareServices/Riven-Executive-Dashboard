@@ -117,5 +117,5 @@ Leave out empty sections. Then remind Anton to let OneDrive finish syncing (gree
 - Delete, rename or move any file or folder. Overwrite an approved final picture or video.
 - Edit any file outside the list in section 4 and `references/edit-pathway.md`.
 - Change Meta adverts, budgets or audiences; change the website; send any email or message (drafts only).
-- Put passwords, card or bank details, ID numbers or cost prices in any file.
+- Put passwords, card or bank details or ID numbers in any file.
 - Write as a host, customer or influencer.
