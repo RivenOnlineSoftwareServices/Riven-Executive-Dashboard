@@ -23,14 +23,25 @@ The Glowming Summer Campaign 2026 for owners who work with their own Claude (bui
   posting calendar is compared cell by cell for its tracking links, `hooks/calendar-links.js`); a new
   file where new files are not allowed is removed. So a shell command is judged by what it DID, not
   by guessing from its text.
+- **A developer's checkout** (the session's folder is inside a git checkout that is neither a company
+  folder nor a campaign repository, nor a worktree of one): the blanket shell rules (no web requests,
+  no hidden code, no deep script chains, no claim text in shell writes) step aside, because a code
+  repository legitimately runs servers, local requests and build scripts. Everything that protects
+  the company files still applies there: file tools, connectors, deletes, and the copy post.js checks.
+  Owners working the campaign do so in the synced folders or the campaign repository, which never
+  count (Riaan, 2026-10-03).
+- Everywhere: a TypeScript type-only import (`import type … from "node:http"`) is not a web request,
+  and a regex's `.exec(` is not hidden code; a real import and a bare `exec(` / `eval(` still are.
 
 A second, content-only check (a prompt hook) reads the text AFTER it is written and only warns:
 secrets, and health claims Meta, TikTok or the ARB could reject. It never blocks; the owners
 decide (Riaan, 2026-10-02: "Your job is to warn, not refuse"). Tests: `node
-hooks/guard.test.js`.
+hooks/guard.test.js`; negative controls (each rule removed must turn a named case red): `node
+hooks/guard.controls.mjs`.
 
 **Known limits:** a script that writes a company file it never names (a path built at run time) in a
-folder the command does not name either; and the whole guard if Cowork does not run plugin hooks.
+folder the command does not name either; in a developer's checkout, a company folder named only by a
+script more than three levels down; and the whole guard if Cowork does not run plugin hooks.
 The campaign skill checks that on first use and records it in `anton.md`. SharePoint version history
 is the undo for every file.
 

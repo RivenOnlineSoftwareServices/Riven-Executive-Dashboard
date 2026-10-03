@@ -27,10 +27,16 @@
  * Everything else inside the company folders is read-only. Files outside them
  * (temporary working files) are allowed.
  *
+ * A developer's checkout (a git working tree that is neither a company folder nor a campaign
+ * repository, devCheckout): the blanket shell rules (no web requests, no hidden code, no deep
+ * script chains, no claim text in shell writes) step aside there; everything that protects the
+ * company files still applies.
+ *
  * Known limits (stated in the README): a script that builds company paths at run
- * time with no folder name in its text; a Python module run with -m; anything if
- * Cowork does not run plugin hooks at all (the skills' own rules then apply, and
- * the campaign skill runs a canary to find out).
+ * time with no folder name in its text; a Python module run with -m; in a
+ * developer's checkout, a company folder named only by a script more than three
+ * levels down; anything if Cowork does not run plugin hooks at all (the skills'
+ * own rules then apply, and the campaign skill runs a canary to find out).
  */
 'use strict';
 
@@ -247,8 +253,12 @@ const SHELL_SCRIPT = /\.(sh|bash|ps1|psm1|bat|cmd)$/i;
 // Shell redirection into a file: > >> 2> 2>> &> &>>, but not 2>&1. Judged on the COMMAND only
 // (scripts contain arrows and comparisons that are not redirects).
 const REDIRECT = /(^|[^=\-<>])(&|\d)?>{1,2}(?![&>=])/;
-// Code that hides what it runs: blocked everywhere, Anton never needs it.
-const HIDDEN_CODE = /-e(nc|ncodedcommand)?\s+[a-z0-9+/=]{16,}|-encodedcommand|frombase64string|base64\s+(-d|--decode)|b64decode|\beval\(|\bexec\(|\biex\b|invoke-expression|(^|[\s;&|])(python3?|py|node|ruby|perl)\s+-(\s|$)|(^|[\s;&|])(python3?|py|node)\s*<|\b(bash|sh|zsh)\s+-s\b|-command\s+-(\s|$)|(^|[\s;&|(])(bash|sh|zsh|dash|ksh|pwsh|powershell|cmd)(\.exe)?\s*<|\|\s*(bash|sh|zsh|dash|ksh|pwsh|powershell|cmd|python3?|py|node|ruby|perl|php)(\.exe)?(\s|$)/i;
+// Code that hides what it runs: blocked everywhere, Anton never needs it. `eval(` and `exec(` are
+// the bare calls only: a member call such as a regex's `pattern.exec(text)` runs no code.
+const HIDDEN_CODE = /-e(nc|ncodedcommand)?\s+[a-z0-9+/=]{16,}|-encodedcommand|frombase64string|base64\s+(-d|--decode)|b64decode|(?<![.\w$])eval\(|(?<![.\w$])exec\(|\biex\b|invoke-expression|(^|[\s;&|])(python3?|py|node|ruby|perl)\s+-(\s|$)|(^|[\s;&|])(python3?|py|node)\s*<|\b(bash|sh|zsh)\s+-s\b|-command\s+-(\s|$)|(^|[\s;&|(])(bash|sh|zsh|dash|ksh|pwsh|powershell|cmd)(\.exe)?\s*<|\|\s*(bash|sh|zsh|dash|ksh|pwsh|powershell|cmd|python3?|py|node|ruby|perl|php)(\.exe)?(\s|$)/i;
+// A TypeScript type-only import or re-export (`import type { IncomingMessage } from "node:http"`) is
+// erased before the code runs: it names a module's types and makes no request, so NET_CALL ignores it.
+const TYPE_ONLY_IMPORT = /\b(?:import|export)\s+type\s+(?:\{[^}]*\}\s*|\*\s+as\s+[\w$]+\s+|[\w$]+\s+)from\s*(['"])[^'"\n]+\1/g;
 const SCRIPT_FILE = /(?:"([^"]+\.(?:py|js|mjs|cjs|ts|ps1|psm1|sh|bash|bat|cmd|pl|rb|php))"|'([^']+\.(?:py|js|mjs|cjs|ts|ps1|psm1|sh|bash|bat|cmd|pl|rb|php))'|([^\s'"]+\.(?:py|js|mjs|cjs|ts|ps1|psm1|sh|bash|bat|cmd|pl|rb|php)))(?=$|[\s;&|)\],}])/gi;
 
 /**
@@ -288,14 +298,54 @@ function scriptsRun(cmd, cwd) {
   return { text, shellText, unreadable, tooDeep };
 }
 
+// A repository whose own path, or whose main checkout's path, says it is campaign work.
+const CAMPAIGN_REPO = /campaign/i;
+
+/**
+ * Whether the session works in a developer's checkout: its folder is inside a git working tree that
+ * is not a company folder and not a campaign repository (nor a worktree of one, wherever that
+ * worktree lives). There the blanket shell rules below step aside: a code repository legitimately
+ * starts servers, makes local requests, and runs test and build scripts that use eval/exec and
+ * chain many files (measured 2026-10-03: they refused routine gates in a ROSS Suite session). The
+ * company files stay protected everywhere: file tools, connectors, deletes and the copy that
+ * post.js checks do not depend on this. Owners working the campaign do so in the synced company
+ * folders or the campaign repository, neither of which counts (Riaan, 2026-10-03: "make it work
+ * like we need it to without relying on me").
+ */
+function devCheckout(cwd) {
+  const where = realLocation(cwd || process.cwd(), process.cwd());
+  if (isProtected(norm(where))) return false;
+  let dir = where;
+  for (let i = 0; i < 64; i++) {
+    const dotGit = path.join(dir, '.git');
+    let st = null;
+    try { st = fs.statSync(dotGit); } catch (e) { st = null; }
+    if (st) {
+      if (isProtected(norm(dir)) || CAMPAIGN_REPO.test(norm(dir))) return false;
+      // A linked worktree's .git is a file naming its main repository ("gitdir: <main>/.git/worktrees/<name>").
+      if (st.isFile()) {
+        const link = readText(dotGit);
+        if (link === null || isProtected(norm(link)) || CAMPAIGN_REPO.test(norm(link))) return false;
+      }
+      return true;
+    }
+    const parent = path.dirname(dir);
+    if (parent === dir) return false;
+    dir = parent;
+  }
+  return false;
+}
+
 /** Decide one shell command, including the scripts it runs. */
 function checkBash(input, cwd, callId) {
   const cmd = String(input.command || '');
-  if (HIDDEN_CODE.test(cmd)) {
+  // In a developer's checkout only the company-folder protection applies (devCheckout).
+  const dev = devCheckout(cwd);
+  if (!dev && HIDDEN_CODE.test(cmd)) {
     return 'Commands that hide or stream the code they run (encoded, eval/exec, stdin) are not allowed from this Claude. Write the script to a file first so it can be checked.';
   }
   const scripts = scriptsRun(cmd, cwd);
-  if (scripts.tooDeep > 0) {
+  if (!dev && scripts.tooDeep > 0) {
     return 'That chain of scripts is too deep or too large to check (more than three levels, or a script over 500 KB). Run the script directly.';
   }
   const full = cmd + scripts.text;
@@ -305,7 +355,7 @@ function checkBash(input, cwd, callId) {
   const inFolder = isProtected(norm(cwd || ''));
   // Anywhere, not only near company folders: hidden code could make a web request or reach a
   // company file the guard never sees (Codex round 7).
-  if (HIDDEN_CODE.test(scripts.text)) {
+  if (!dev && HIDDEN_CODE.test(scripts.text)) {
     return 'That script hides or streams the code it runs (eval/exec/encoded/stdin), so it cannot be checked. Write the code itself into the script.';
   }
   if ((isProtected(nfull) || inFolder) && REMOVE_SHELL.test(full)) {
@@ -316,10 +366,12 @@ function checkBash(input, cwd, callId) {
   const cmdNoDiscard = cmd.replace(discard, '');
   const shellNoDiscard = scripts.shellText.replace(discard, '');
   const redirects = REDIRECT.test(cmdNoDiscard) || REDIRECT.test(shellNoDiscard);
-  if (NET_CALL.test(full)) {
+  if (!dev && NET_CALL.test(full.replace(TYPE_ONLY_IMPORT, ''))) {
     return 'Web requests from the shell or a script are not allowed from this Claude (adverts, the shop and email are never changed this way). Use a connector to read, or ask Riaan\'s side.';
   }
-  if ((redirects || CODE_WRITE.test(full)) && BANNED_CLAIMS.test(full)) {
+  // In a developer's checkout, claims are judged where they land: a company file (checkWrite, and
+  // post.js after a shell command), not in code and fixtures that name the banned words.
+  if (!dev && (redirects || CODE_WRITE.test(full)) && BANNED_CLAIMS.test(full)) {
     return 'That text contains a weight-loss, slimming, detox, appetite, craving, cure or "clinically proven" claim, which is never allowed. Remove it.';
   }
   if (inFolder && scripts.unreadable > 0) {
