@@ -413,7 +413,48 @@ function ownGitSettings(root) {
  * campaign launch in the synced company folders or the campaign repository, neither of which
  * counts (Riaan, 2026-10-03: "make it work like we need it to without relying on me").
  */
-function devCheckout(cwd) {
+function devCheckout(cwd, sessionId) {
+  return recordedDev(sessionId) && checkoutAllows(cwd);
+}
+
+/**
+ * Where the guard records, when a session starts, whether it is a developer's checkout (sessionStart).
+ * Decided before Claude can act, so a campaign session cannot later remove its own remote or marker
+ * and become one (Codex round 2, 2026-10-03). The folder's name carries a company-folder marker, so
+ * the guard protects the records like company files: no file tool may write there, a shell command
+ * naming one may not delete it, and one it changes is put back. A missing record is never a
+ * developer's checkout. `testSessionDir` is set only by the tests, in their own process.
+ */
+let testSessionDir = null;
+function sessionFile(sessionId) {
+  const id = String(sessionId || '').replace(/[^A-Za-z0-9_-]/g, '').slice(0, 120);
+  return id ? path.join(testSessionDir || path.join(os.tmpdir(), 'glowming-campaign-guard', '_riven-claude', 'sessions'), id + '.json') : null;
+}
+
+function recordedDev(sessionId) {
+  const file = sessionFile(sessionId);
+  if (!file) return false;
+  try { return JSON.parse(fs.readFileSync(file, 'utf8')).dev === true; } catch (e) { return false; }
+}
+
+/**
+ * The SessionStart hook: record whether this session is a developer's checkout. A later start of the
+ * same session (resume, compact) can only make it stricter, never turn a refusal into an allowance.
+ */
+function sessionStart(event) {
+  const file = sessionFile(event && event.session_id);
+  if (!file) return;
+  const launchFolder = process.env.CLAUDE_PROJECT_DIR;
+  let dev = !!launchFolder && checkoutAllows(launchFolder);
+  let before = null;
+  try { before = JSON.parse(fs.readFileSync(file, 'utf8')); } catch (e) { before = null; }
+  if (before !== null && before.dev !== true) dev = false;
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  fs.writeFileSync(file, JSON.stringify({ dev, at: Date.now() }));
+}
+
+/** The live half of devCheckout: the launch folder, its checkout and the shell's folder, as they are now. */
+function checkoutAllows(cwd) {
   const launched = process.env.CLAUDE_PROJECT_DIR;
   if (!launched) return false; // without the launch folder, nothing shows the session is a code repository's
   const project = realLocation(launched, process.cwd());
@@ -428,10 +469,10 @@ function devCheckout(cwd) {
 }
 
 /** Decide one shell command, including the scripts it runs. */
-function checkBash(input, cwd, callId) {
+function checkBash(input, cwd, callId, sessionId) {
   const cmd = String(input.command || '');
   // In a developer's checkout only the company-folder protection applies (devCheckout).
-  const dev = devCheckout(cwd);
+  const dev = devCheckout(cwd, sessionId);
   if (!dev && HIDDEN_CODE.test(cmd)) {
     return 'Commands that hide or stream the code they run (encoded, eval/exec, stdin) are not allowed from this Claude. Write the script to a file first so it can be checked.';
   }
@@ -642,14 +683,15 @@ function decide(event) {
   const cwd = event.cwd || process.cwd();
   if (/^(Write|Edit|MultiEdit|NotebookEdit)$/.test(tool)) return checkWrite(tool, input, cwd);
   if (tool.startsWith('mcp__')) return checkMcp(tool, input, cwd);
-  if (typeof input.command === 'string') return checkBash(input, cwd, event.tool_use_id);
+  if (typeof input.command === 'string') return checkBash(input, cwd, event.tool_use_id, event.session_id);
   return null;
 }
 
-/** Tests only (their own process): stand in for the owner's code folder. */
+/** Tests only (their own process): stand in for the owner's code folder, and for the records' folder. */
 function setDevRootsForTests(roots) { testRoots = roots; }
+function setSessionDirForTests(dir) { testSessionDir = dir; }
 
-module.exports = { decide, checkWrite, checkNewFile, isTextFile, norm, sha1, walkFiles, snapId, CALENDAR, BANNED_CLAIMS, setDevRootsForTests };
+module.exports = { decide, sessionStart, checkWrite, checkNewFile, isTextFile, norm, sha1, walkFiles, snapId, CALENDAR, BANNED_CLAIMS, setDevRootsForTests, setSessionDirForTests };
 
 if (require.main === module) {
   let buf = '';
@@ -660,6 +702,11 @@ if (require.main === module) {
     try { event = JSON.parse(buf || '{}'); } catch (e) {
       process.stderr.write('glowming-campaign guard: could not read the tool call, so it was blocked to be safe.');
       process.exit(2);
+    }
+    // The SessionStart hook only records; it never stops a session from starting.
+    if (process.argv.includes('--session-start')) {
+      try { sessionStart(event); } catch (e) { /* no record: never a developer's checkout */ }
+      process.exit(0);
     }
     const reason = decide(event);
     if (reason) { process.stderr.write('Blocked by the Glowming campaign guard: ' + reason); process.exit(2); }

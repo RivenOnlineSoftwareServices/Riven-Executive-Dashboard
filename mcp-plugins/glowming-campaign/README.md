@@ -31,7 +31,10 @@ The Glowming Summer Campaign 2026 for owners who work with their own Claude (bui
   text in shell writes) step aside, because a code repository legitimately runs servers, local
   requests and build scripts. Everything that protects the company files still applies there: file
   tools, connectors, deletes, and the copy post.js checks. A campaign repository is known by its name,
-  its git remote, or a `.glowming-campaign` file at its root. Owners working the campaign launch in
+  its git remote, or a `.glowming-campaign` file at its root. The decision is recorded when the
+  session starts (a SessionStart hook, before Claude can act) in a folder the guard protects like
+  company files, and every later call needs that record too: removing a remote or a marker during a
+  session never turns the rules off, and a session with no record never counts. Owners working the campaign launch in
   the synced folders or the campaign repository, which never count (Riaan, 2026-10-03).
 - Everywhere: in a TypeScript script, a type-only import (`import type … from "node:http"`) is not a
   web request; a real import still is. Outside a developer's checkout every `eval(` and `exec(` is

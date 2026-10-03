@@ -19,7 +19,15 @@ const original = readFileSync(join(HOOKS, "guard.js"), "utf8").split("\r\n").joi
 const M = [
   // ---- who counts as a developer's checkout
   ["D1 nothing is a developer's checkout", "dev: a request to a local server",
-    ["function devCheckout(cwd) {\n", "function devCheckout(cwd) {\n  return false;\n"]],
+    ["function devCheckout(cwd, sessionId) {\n", "function devCheckout(cwd, sessionId) {\n  return false;\n"]],
+  // ---- bound to the session's start (Codex round 2)
+  ["D32 the start record is ignored (decided live on every call)", "after removing its own remote",
+    ["return recordedDev(sessionId) && checkoutAllows(cwd);", "return checkoutAllows(cwd);"]],
+  ["D33 a session with no start record counts", "with no start record",
+    ["  if (!file) return false;\n  try { return JSON.parse(fs.readFileSync(file, 'utf8')).dev === true; } catch (e) { return false; }",
+      "  if (!file) return true;\n  try { return JSON.parse(fs.readFileSync(file, 'utf8')).dev === true; } catch (e) { return true; }"]],
+  ["D34 a later start can turn a refusal into an allowance", "started again after removing its remote",
+    ["if (before !== null && before.dev !== true) dev = false;", ""]],
   ["D2 a campaign repository is judged by nothing (name, main repository, remote)", "campaign repository: a web request",
     ["isProtected(norm(root)) || CAMPAIGN_REPO.test(norm(root)) ||", "isProtected(norm(root)) ||"],
     ["isProtected(norm(gitDir)) || CAMPAIGN_REPO.test(norm(gitDir)) ||", "isProtected(norm(gitDir)) ||"],
@@ -49,8 +57,9 @@ const M = [
     ["if (isProtected(norm(root)) || CAMPAIGN_REPO", "if (CAMPAIGN_REPO"],
     ["if (isProtected(norm(gitDir)) || CAMPAIGN_REPO", "if (CAMPAIGN_REPO"],
     ["  if (isProtected(norm(where))) return false;\n", ""]],
-  ["D7 no launch folder: the shell's folder is used instead", "no launch folder known",
-    ["const launched = process.env.CLAUDE_PROJECT_DIR;", "const launched = process.env.CLAUDE_PROJECT_DIR || cwd;"]],
+  ["D7 no launch folder: the shell's folder is used instead (live check and start record)", "no launch folder known",
+    ["const launched = process.env.CLAUDE_PROJECT_DIR;", "const launched = process.env.CLAUDE_PROJECT_DIR || cwd;"],
+    ["return recordedDev(sessionId) && checkoutAllows(cwd);", "return checkoutAllows(cwd);"]],
   ["D8 the shell's folder decides, not the launch folder", "the shell has gone into a fresh git init folder",
     ["const project = realLocation(launched, process.cwd());", "const project = realLocation(cwd || launched, process.cwd());"]],
   ["D9 the shell may leave the checkout", "the shell has left the checkout",

@@ -153,7 +153,8 @@ const allow = (why, ev) => { assert.strictEqual(decide(ev), null, 'should ALLOW:
 const block = (why, ev) => { assert.notStrictEqual(decide(ev), null, 'should BLOCK: ' + why); passed++; };
 const W = (p, content) => ({ tool_name: 'Write', tool_input: { file_path: p, content } });
 const E = (p, o, n) => ({ tool_name: 'Edit', tool_input: { file_path: p, old_string: o, new_string: n } });
-const B = (command, cwd) => ({ tool_name: 'Bash', tool_input: { command }, cwd });
+let currentSession; // set by launchedIn (section 5): the session whose start was recorded
+const B = (command, cwd) => ({ tool_name: 'Bash', tool_input: { command }, cwd, session_id: currentSession });
 // Sections 1-4 and 6 mean nothing if this machine's temp folder sits inside a checkout the guard
 // would trust: prove the blanket rules hold where Anton stands before anything else.
 block('start-up: a web request from Anton\'s folder is refused', B('curl -s https://example.com/'));
@@ -473,7 +474,8 @@ for (const d of [devScripts, path.join(devRepo, 'src'), path.join(campRepo, 'dra
 const devTree = worktree(path.join(devRepo, '.claude', 'worktrees', 'fix'), devRepo, 'fix');
 const campTree = worktree(path.join(repos, 'tidy-copy'), campRepo, 'tidy');
 // A clone of the campaign under a short name; a campaign repository named otherwise, with the marker.
-const renamedClone = gitRepo(path.join(repos, 'gsc'), 'https://github.com/RivenOnlineSoftwareServices/Glowming-Summer-Campaign-2026.git');
+const CAMPAIGN_URL = 'https://github.com/RivenOnlineSoftwareServices/Glowming-Summer-Campaign-2026.git';
+const renamedClone = gitRepo(path.join(repos, 'gsc'), CAMPAIGN_URL);
 const markedRepo = gitRepo(path.join(repos, 'Glowming-Winter-Promo-2027'), 'https://github.com/RivenOnlineSoftwareServices/Glowming-Winter-Promo-2027.git');
 fs.writeFileSync(path.join(markedRepo, '.glowming-campaign'), 'campaign work' + NL);
 // The campaign remote hidden from a plain reading of .git/config, each way git still resolves it
@@ -514,11 +516,22 @@ fs.mkdirSync(path.join(homeRepo, 'Desktop'), { recursive: true });
 const antonWork = gitRepo(path.join(antonHome, 'Work'));
 const annaHome = gitRepo(path.join(root, 'Users', 'anna'));
 fs.mkdirSync(path.join(annaHome, 'Desktop'), { recursive: true });
-/** Run `fn` as a session launched in `project` (undefined: no launch folder known). */
+// Session records go to this run's own folder, still under a company-folder marker as on the machine.
+const sessionDir = path.join(root, 'guard-sessions', '_riven-claude', 'sessions');
+guard.setSessionDirForTests(sessionDir);
+let sessionCount = 0;
+/**
+ * Run `fn` as a session launched in `project` (undefined: no launch folder known), its start recorded
+ * by the SessionStart hook first, as Claude Code does before Claude can act.
+ */
 const launchedIn = (project, fn) => {
   const was = process.env.CLAUDE_PROJECT_DIR;
   if (project === undefined) delete process.env.CLAUDE_PROJECT_DIR; else process.env.CLAUDE_PROJECT_DIR = project;
-  try { fn(); } finally { if (was === undefined) delete process.env.CLAUDE_PROJECT_DIR; else process.env.CLAUDE_PROJECT_DIR = was; }
+  currentSession = 'test-session-' + (++sessionCount);
+  try { guard.sessionStart({ session_id: currentSession }); fn(); } finally {
+    currentSession = undefined;
+    if (was === undefined) delete process.env.CLAUDE_PROJECT_DIR; else process.env.CLAUDE_PROJECT_DIR = was;
+  }
 };
 // What a test-and-build script looks like: a child process, a regex's exec, a real network import, eval.
 fs.writeFileSync(path.join(devScripts, 'gates.mjs'), [
@@ -570,6 +583,34 @@ launchedIn(campTree, () => {
 });
 launchedIn(renamedClone, () => block('a clone of the campaign repository under another name: a web request', web(renamedClone)));
 launchedIn(markedRepo, () => block('a campaign repository named otherwise, with the marker file: a web request', web(markedRepo)));
+// Decided when the session starts: what the session itself changes later never makes it a
+// developer's checkout (Codex round 2).
+launchedIn(renamedClone, () => {
+  git(renamedClone, 'remote', 'remove', 'origin');
+  try {
+    block('the campaign clone\'s session after removing its own remote: a web request', web(renamedClone));
+    guard.sessionStart({ session_id: currentSession }); // the same session started again (resume, compact)
+    block('that session started again after removing its remote: a web request', web(renamedClone));
+  } finally { git(renamedClone, 'remote', 'add', 'origin', CAMPAIGN_URL); }
+});
+launchedIn(markedRepo, () => {
+  const marker = path.join(markedRepo, '.glowming-campaign');
+  fs.rmSync(marker);
+  try { block('the marked repository\'s session after deleting its own marker: a web request', web(markedRepo)); }
+  finally { fs.writeFileSync(marker, 'campaign work' + NL); }
+});
+launchedIn(devRepo, () => {
+  // The records are protected like company files, from a developer's checkout too.
+  const record = path.join(sessionDir, currentSession + '.json');
+  block('the Write tool on a session record', { tool_name: 'Write', tool_input: { file_path: record, content: '{"dev":true}' }, session_id: currentSession });
+  block('rm of a session record', devB('rm "' + record + '"'));
+});
+{
+  // A session whose start was never recorded is never a developer's checkout.
+  process.env.CLAUDE_PROJECT_DIR = devRepo;
+  try { block('a code repository session with no start record: a web request', { ...devB('curl -s http://localhost:3000/'), session_id: 'never-started' }); }
+  finally { delete process.env.CLAUDE_PROJECT_DIR; }
+}
 launchedIn(splitRemote, () => block('a campaign remote continued across two lines of .git/config: a web request', web(splitRemote)));
 launchedIn(includedRemote, () => block('a campaign remote in an included config file: a web request', web(includedRemote)));
 launchedIn(rewrittenRemote, () => block('a campaign remote reached through a URL rewrite: a web request', web(rewrittenRemote)));
