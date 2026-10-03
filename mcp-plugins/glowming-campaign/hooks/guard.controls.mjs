@@ -58,15 +58,9 @@ const M = [
   ["D19 claim text in shell writes still refused there", "dev: a test fixture that names a banned word",
     ["if (!dev && (redirects || CODE_WRITE", "if ((redirects || CODE_WRITE"]],
   // ---- the type-only import exception
-  ["F1 a type-only import counts as a web request", "type-only import of node:http is not a web request",
-    ["NET_CALL.test(cmd + scripts.netText)", "NET_CALL.test(cmd + scripts.text)"]],
-  ["F2 the exception also takes real imports", "a real import of node:http still is",
-    ["(?:import|export)\\s+type\\s+(?:", "(?:import|export)\\s+(?:type\\s+)?(?:"]],
-  ["F3 the exception swallows anything between braces, everywhere (both layers)", "echoed \"import type {\"",
-    ["\\{[\\s\\w$,]*\\}", "\\{[^}]*\\}"],
-    ["NET_CALL.test(cmd + scripts.netText)", "NET_CALL.test((cmd + scripts.netText).replace(TYPE_ONLY_IMPORT, ''))"]],
-  ["F4 the exception reaches scripts that are not TypeScript", "a type-only import line inside a Python script",
-    ["(TS_SCRIPT.test(file) ? part.replace(TYPE_ONLY_IMPORT, '') : part)", "part.replace(TYPE_ONLY_IMPORT, '')"]],
+  // ---- no text exempted outside a developer's checkout
+  ["F1 a type-only import is exempted again (text stripped before NET_CALL)", "a TypeScript type-only import of node:http counts as on main",
+    ["if (!dev && NET_CALL.test(full))", "if (!dev && NET_CALL.test(full.replace(/\\bimport\\s+type\\s*\\{[^}]*\\}\\s*from\\s*['\"][^'\"]+['\"]/g, '')))"]],
   // ---- hidden code
   // The regex case runs first and depends on the same rule (no member call is exempt).
   ["F5 a member exec( is exempt (a file's name or a regex receiver trusted)", "a regex's .exec( still counts",
@@ -96,8 +90,8 @@ const M = [
     ["|ts|mts|cts|tsx|", "|ts|cts|tsx|", "all"]],
 ];
 
-// The table must still carry its backslashes (Dev Rule #30): F2 looks for a literal backslash-s.
-if (!M.find((m) => m[0].startsWith("F2"))[2][0].includes(String.fromCharCode(92) + "s")) throw new Error("backslashes lost in the mutation table");
+// The table must still carry its backslashes (Dev Rule #30): F6 looks for a literal backslash-s.
+if (!M.find((m) => m[0].startsWith("F6"))[2][0].includes(String.fromCharCode(92) + "s")) throw new Error("backslashes lost in the mutation table");
 
 let bad = 0;
 try {

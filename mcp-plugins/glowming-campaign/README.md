@@ -35,11 +35,12 @@ The Glowming Summer Campaign 2026 for owners who work with their own Claude (bui
   (Codex and Claude review, 2026-10-03). Anton launches in the synced folders, which never count;
   the campaign repository and the worktrees made inside it say "campaign" in their path (Riaan,
   2026-10-03).
-- Everywhere: in a TypeScript script, a type-only import (`import type … from "node:http"`) is not a
-  web request; a real import still is. Outside a developer's checkout every `eval(` and `exec(` is
-  hidden code, a member call included (`b.exec(`, and a regex's `pattern.exec(`: a file's name does
-  not say what runs it), and so is decoding a payload (`atob(`, a Buffer from base64 or hex,
-  `new Function(`).
+- Outside a developer's checkout no text is exempted from the rules: every `eval(` and `exec(` is
+  hidden code, a member call included (`b.exec(`, a regex's `pattern.exec(`: a file's name does not
+  say what runs it), and so is decoding a payload (`atob(`, a Buffer from base64 or hex,
+  `new Function(`); a TypeScript `import type … from "node:http"` counts as a web request as on main
+  (an exemption for it was tried and dropped: a string can hold the same text). Scripts named
+  .jsx/.mts/.cts/.tsx are read too.
 
 A second, content-only check (a prompt hook) reads the text AFTER it is written and only warns:
 secrets, and health claims Meta, TikTok or the ARB could reject. It never blocks; the owners

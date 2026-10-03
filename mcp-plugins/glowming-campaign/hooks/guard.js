@@ -265,12 +265,6 @@ const REDIRECT = /(^|[^=\-<>])(&|\d)?>{1,2}(?![&>=])/;
 // needed regex .exec( are developer's checkouts). Decoding a payload (atob, a Buffer from base64 or
 // hex, a new Function) counts too, whatever then runs it.
 const HIDDEN_CODE = /-e(nc|ncodedcommand)?\s+[a-z0-9+/=]{16,}|-encodedcommand|frombase64string|base64\s+(-d|--decode)|b64decode|\beval\s*\(|\bexec\s*\(|\batob\(|\bfrom\s*\([^)]*,\s*['"](?:base64(?:url)?|hex)['"]|\bnew\s+Function\s*\(|\biex\b|invoke-expression|(^|[\s;&|])(python3?|py|node|ruby|perl)\s+-(\s|$)|(^|[\s;&|])(python3?|py|node)\s*<|\b(bash|sh|zsh)\s+-s\b|-command\s+-(\s|$)|(^|[\s;&|(])(bash|sh|zsh|dash|ksh|pwsh|powershell|cmd)(\.exe)?\s*<|\|\s*(bash|sh|zsh|dash|ksh|pwsh|powershell|cmd|python3?|py|node|ruby|perl|php)(\.exe)?(\s|$)/i;
-// A TypeScript type-only import or re-export (`import type { IncomingMessage } from "node:http"`) is
-// erased before the code runs: it names a module's types and makes no request, so NET_CALL ignores it
-// in a TypeScript script's text (never in the command). The braces hold names and commas only, so the
-// pattern can never swallow a command or a call (Claude review 2026-10-03).
-const TYPE_ONLY_IMPORT = /\b(?:import|export)\s+type\s+(?:\{[\s\w$,]*\}\s*|\*\s+as\s+[\w$]+\s+|[\w$]+\s+)from\s*(['"])[^'"\s]+\1/g;
-const TS_SCRIPT = /\.(ts|mts|cts|tsx)$/i;
 const SCRIPT_FILE = /(?:"([^"]+\.(?:py|js|mjs|cjs|jsx|ts|mts|cts|tsx|ps1|psm1|sh|bash|bat|cmd|pl|rb|php))"|'([^']+\.(?:py|js|mjs|cjs|jsx|ts|mts|cts|tsx|ps1|psm1|sh|bash|bat|cmd|pl|rb|php))'|([^\s'"]+\.(?:py|js|mjs|cjs|jsx|ts|mts|cts|tsx|ps1|psm1|sh|bash|bat|cmd|pl|rb|php)))(?=$|[\s;&|)\],}])/gi;
 
 /**
@@ -280,7 +274,6 @@ const SCRIPT_FILE = /(?:"([^"]+\.(?:py|js|mjs|cjs|jsx|ts|mts|cts|tsx|ps1|psm1|sh
  */
 function scriptsRun(cmd, cwd) {
   let text = '';
-  let netText = ''; // the same, with a TypeScript script's type-only imports taken out (for NET_CALL)
   let shellText = '';
   let unreadable = 0;
   let tooDeep = 0; // scripts the guard cannot fully read: more than three levels down, or over 500 KB
@@ -302,14 +295,13 @@ function scriptsRun(cmd, cwd) {
         if (body.length > 500000) { tooDeep++; continue; }
         const part = body;
         text += NL + part;
-        netText += NL + (TS_SCRIPT.test(file) ? part.replace(TYPE_ONLY_IMPORT, '') : part);
         if (SHELL_SCRIPT.test(file)) shellText += NL + part;
         next.push(part);
       }
     }
     frontier = next;
   }
-  return { text, netText, shellText, unreadable, tooDeep };
+  return { text, shellText, unreadable, tooDeep };
 }
 
 // Campaign work under the code folder is known by its path (the campaign repository, and the worktrees
@@ -398,7 +390,7 @@ function checkBash(input, cwd, callId) {
   const cmdNoDiscard = cmd.replace(discard, '');
   const shellNoDiscard = scripts.shellText.replace(discard, '');
   const redirects = REDIRECT.test(cmdNoDiscard) || REDIRECT.test(shellNoDiscard);
-  if (!dev && NET_CALL.test(cmd + scripts.netText)) {
+  if (!dev && NET_CALL.test(full)) {
     return 'Web requests from the shell or a script are not allowed from this Claude (adverts, the shop and email are never changed this way). Use a connector to read, or ask Riaan\'s side.';
   }
   // In a developer's checkout, claims are judged where they land: a company file (checkWrite, and

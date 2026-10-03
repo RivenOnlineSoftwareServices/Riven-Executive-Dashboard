@@ -531,22 +531,17 @@ launchedIn(companyCode, () => block('a checkout inside a company folder: a web r
   launchedIn(into, () => block('a launch folder outside the code folder that is a junction leading in: a web request', web(into)));
 }
 
-// ---- 6. Two false positives, fixed everywhere, and no new way past the rules (2026-10-03) ----------
-// From Anton's folder, so the blanket rules apply in full.
+// ---- 6. Outside a developer's checkout: no text exempted, and no new way past the rules (2026-10-03) --
+// From Anton's folder, so the blanket rules apply in full. Exemptions for text (a TypeScript type-only
+// import, a member .exec() were tried and dropped: a string or a file name can carry the same text.
 const fpFile = (name, lines) => { const p = path.join(antonHome, name); fs.writeFileSync(p, lines.join(NL) + NL); return p; };
-allow('a TypeScript type-only import of node:http is not a web request',
+block('a TypeScript type-only import of node:http counts as on main',
   B('node "' + fpFile('types.ts', ['import type { IncomingMessage } from "node:http";', 'export const x = 1;']) + '"'));
-allow('a multi-line type-only import and a type re-export',
-  B('node "' + fpFile('types2.ts', ['import type {', '  Agent,', '  RequestOptions,', '} from "node:https";', 'export type { Socket } from "node:net";']) + '"'));
-block('a real import of node:http still is', B('node "' + fpFile('server.ts', ['import { createServer } from "node:http";', 'createServer().listen(8080);']) + '"'));
-block('a type import beside a real one still is', B('node "' + fpFile('both.ts', ['import type { IncomingMessage } from "node:http";', 'import { request } from "node:http";']) + '"'));
-// The exception never reaches the command, a non-TypeScript script, or anything between braces that is not names.
+block('a real import of node:http', B('node "' + fpFile('server.ts', ['import { createServer } from "node:http";', 'createServer().listen(8080);']) + '"'));
+block('a command named inside a string that looks like a type import (Codex round 3)',
+  B('node "' + fpFile('tpl.ts', ['const program = `import type {curl} from "x"`.split(/[{}]/)[1];', 'require("child_process").spawnSync(program, ["-X", "POST", "https://example.com/api", "-d", "enabled=true"]);']) + '"'));
 block('a web request wrapped between echoed "import type {" and "} from" lines',
   B('echo "import type {"; curl -X POST -d x https://graph.facebook.com/v19.0/act_1/ads; echo \'} from "x"\''));
-block('a web request between commented "import type {" and "} from" lines in a Python script',
-  B('python "' + fpFile('wrap.py', ['# import type {', 'import urllib.request', 'urllib.request.urlopen("https://example.com")', '# } from "x"']) + '"'));
-block('a type-only import line inside a Python script is not exempt',
-  B('python "' + fpFile('types.py', ['# import type { IncomingMessage } from "node:http"', 'print(1)']) + '"'));
 // Outside a developer's checkout a member exec( counts too: a file's name does not say what runs it.
 block('outside a developer\'s checkout, a regex\'s .exec( still counts', B('node "' + fpFile('rx.js', ['const m = /a(b)/.exec("ab");', 'console.log(m);']) + '"'));
 block('Codex\'s payload in a file named .js, run by Python', B('python "' + fpFile('payload.js', ['import builtins as b', 'b.exec(bytes.fromhex("7072696e74283432290a").decode())']) + '"'));
