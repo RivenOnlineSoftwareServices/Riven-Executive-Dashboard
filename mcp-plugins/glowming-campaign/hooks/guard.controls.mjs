@@ -18,6 +18,8 @@ const original = readFileSync(join(HOOKS, "guard.js"), "utf8").split("\r\n").joi
 // unchanged copy of guard.js and calendar-links.js (post.js requires both from its own folder).
 const POST_COPY = join(COPY_DIR, "post.js");
 const originalPost = readFileSync(join(HOOKS, "post.js"), "utf8").split("\r\n").join("\n");
+const HOOKS_COPY = join(COPY_DIR, "hooks.json");
+const originalHooks = readFileSync(join(HOOKS, "hooks.json"), "utf8").split("\r\n").join("\n");
 writeFileSync(join(COPY_DIR, "calendar-links.js"), readFileSync(join(HOOKS, "calendar-links.js")));
 
 // [name, expected failing case (substring of its assertion message), [find, replace]...]
@@ -209,6 +211,16 @@ const M = [
     ["if (isSettingsFile(written) || isSettingsFile(raw)) {", "if (isSettingsFile(raw)) {"]],
   ["P19 a quoted JSON key is not an assignment", "a password as a JSON property",
     ["@post"], ["token)\\b[\"']?\\s*[:=]", "token)\\b\\s*[:=]"]],
+  // ---- hooks.json wiring
+  ["H1 post.js is not registered after a successful call", "post.js runs after a successful Bash",
+    ["@hooks"], ["\"PostToolUse\": [", "\"PostToolUseOff\": ["]],
+  ["H2 post.js is not registered after a failed call", "post.js runs after a failed Bash",
+    ["@hooks"], ["\"PostToolUseFailure\": [", "\"PostToolUseFailureOff\": ["]],
+  ["H3 guard.js does not run before connector calls", "guard.js runs before mcp__ms365__outlook_send_mail",
+    ["@hooks"], ["|PowerShell|mcp__.*\"", "|PowerShell\""]],
+  ["H4 a prompt hook is back", "no prompt hook",
+    ["@hooks"], ["\"type\": \"command\",\n            \"command\": \"node \\\"${CLAUDE_PLUGIN_ROOT}/hooks/post.js\\\"\",\n            \"timeout\": 15\n          }\n        ]\n      }\n    ],\n    \"PostToolUseFailure\"",
+      "\"type\": \"command\",\n            \"command\": \"node \\\"${CLAUDE_PLUGIN_ROOT}/hooks/post.js\\\"\",\n            \"timeout\": 15\n          },\n          { \"type\": \"prompt\", \"prompt\": \"x\" }\n        ]\n      }\n    ],\n    \"PostToolUseFailure\""]],
   ["C5 the shell's folder is taken as written (a junction into a company folder is outside)", "campaign: a command run in a junction that leads into a company folder",
     ["const inFolder = isProtected(norm(cwd || '')) || (!!cwd && isProtected(norm(realLocation(cwd, process.cwd()))));", "const inFolder = isProtected(norm(cwd || ''));"]],
   ["P4 the displaced version is not kept", "the report names where the displaced version is kept",
@@ -238,8 +250,9 @@ try {
   for (const [name, expect, ...rest] of M) {
     if (only && !only.test(name)) continue;
     const isPost = rest[0] && rest[0][0] === "@post";
-    const edits = isPost ? rest.slice(1) : rest;
-    let text = isPost ? originalPost : original;
+    const isHooks = rest[0] && rest[0][0] === "@hooks"; // a mutated copy of hooks.json (HOOKS_JSON_PATH)
+    const edits = isPost || isHooks ? rest.slice(1) : rest;
+    let text = isPost ? originalPost : isHooks ? originalHooks : original;
     let applied = true;
     for (const [find, replace, all] of edits) {
       const n = text.split(find).length - 1;
@@ -247,10 +260,12 @@ try {
       text = all ? text.split(find).join(replace) : text.replace(find, () => replace);
     }
     if (!applied) { bad++; continue; }
-    writeFileSync(COPY, isPost ? original : text);
+    writeFileSync(COPY, isPost || isHooks ? original : text);
     if (isPost) writeFileSync(POST_COPY, text);
+    if (isHooks) writeFileSync(HOOKS_COPY, text);
     const env = { ...process.env, GUARD_PATH: COPY };
     if (isPost) env.POST_PATH = POST_COPY;
+    if (isHooks) env.HOOKS_JSON_PATH = HOOKS_COPY;
     const r = spawnSync(process.execPath, [join("hooks", "guard.test.js")], { cwd: PLUGIN, encoding: "utf8", env, timeout: 300000 });
     const out = (r.stdout || "") + (r.stderr || "");
     if (r.status === 0) { bad++; console.log(`${name}: SURVIVED`); continue; }

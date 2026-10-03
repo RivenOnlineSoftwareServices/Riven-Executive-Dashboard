@@ -988,10 +988,19 @@ assert.strictEqual(guard.decide(B('ls /tmp')), null, 'no call id: a command touc
 
 // 7j. The hook wiring: no prompt hook (it cannot tell who is working); post.js also after a failure.
 {
-  const hooks = JSON.parse(fs.readFileSync(path.join(__dirname, 'hooks.json'), 'utf8')).hooks;
+  const hooks = JSON.parse(fs.readFileSync(process.env.HOOKS_JSON_PATH || path.join(__dirname, 'hooks.json'), 'utf8')).hooks;
   const all = JSON.stringify(hooks);
   assert.ok(!/"type":\s*"prompt"/.test(all), 'no prompt hook: it would run for Riaan too'); passed++;
-  assert.ok(JSON.stringify(hooks.PostToolUseFailure || []).includes('post.js'), 'post.js runs after a failed call'); passed++;
+  // Which registered command runs for a tool, per event (the matcher is a regex over the tool name).
+  const runsFor = (event, tool, file) => (hooks[event] || []).some((h) => new RegExp('^(?:' + h.matcher + ')$').test(tool)
+    && (h.hooks || []).some((c) => c.type === 'command' && String(c.command).includes('/hooks/' + file)));
+  for (const tool of ['Bash', 'PowerShell', 'Write', 'Edit', 'MultiEdit', 'NotebookEdit', 'mcp__ms365__outlook_send_mail']) {
+    assert.ok(runsFor('PreToolUse', tool, 'guard.js'), 'guard.js runs before ' + tool); passed++;
+  }
+  for (const tool of ['Bash', 'PowerShell', 'Write', 'Edit', 'MultiEdit', 'NotebookEdit']) {
+    assert.ok(runsFor('PostToolUse', tool, 'post.js'), 'post.js runs after a successful ' + tool); passed++;
+    assert.ok(runsFor('PostToolUseFailure', tool, 'post.js'), 'post.js runs after a failed ' + tool); passed++;
+  }
 }
 
 fs.rmSync(calPy, { force: true });
