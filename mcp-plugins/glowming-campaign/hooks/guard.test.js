@@ -106,7 +106,6 @@ const antonHome = path.join(root, 'Users', 'anton');
 fs.mkdirSync(antonHome, { recursive: true });
 process.chdir(antonHome);
 delete process.env.CLAUDE_PROJECT_DIR;
-delete process.env.GLOWMING_DEV_ROOTS;
 const caption = [
   'A5 Journey starts', '=================', '', 'CAPTION (post text):', 'Old post text.', '',
   'Headline:   Old headline', 'Short line: Old short', 'Button:     Sign up', '',
@@ -431,9 +430,9 @@ block('a Magnific prompt with an appetite claim', { tool_name: 'mcp__magnific__i
 // the blanket shell rules step aside there. Everything that protects the company files still applies,
 // and a campaign repository (or a worktree of one, wherever it lives) is never a developer's checkout.
 // Decided from the folder the session was LAUNCHED in (CLAUDE_PROJECT_DIR), which Claude cannot move,
-// and only under the owner's code folder (GLOWMING_DEV_ROOTS here; C:\repos on the owner's machine).
+// and only under the owner's code folder (C:\repos on the owner's machine; this folder here).
 const repos = path.join(root, 'repos');
-process.env.GLOWMING_DEV_ROOTS = repos;
+guard.setDevRootsForTests([repos]);
 /** A git repository as git lays it out: .git/config with the given remote (an empty one if none). */
 const gitRepo = (dir, remote) => {
   fs.mkdirSync(path.join(dir, '.git'), { recursive: true });
@@ -524,6 +523,20 @@ launchedIn(undefined, () => block('no launch folder known, standing in a checkou
 launchedIn(antonHome, () => block('launched in Anton\'s folder, then cd + git init: a web request', web(freshInit)));
 launchedIn(antonWork, () => block('a .git written in Anton\'s own launch folder: a web request', web(antonWork)));
 launchedIn(path.join(annaHome, 'Desktop'), () => block('a .git written above the launch folder: a web request', web(path.join(annaHome, 'Desktop'))));
+{
+  // A session could persist an environment variable for the next one (setx): none is read.
+  process.env.GLOWMING_DEV_ROOTS = antonHome;
+  try { launchedIn(antonWork, () => block('a persisted GLOWMING_DEV_ROOTS naming Anton\'s folder changes nothing', web(antonWork))); }
+  finally { delete process.env.GLOWMING_DEV_ROOTS; }
+}
+{
+  // The code folder itself is never the checkout (a .git at C:\repos).
+  gitRepo(repos);
+  const notes = path.join(repos, 'notes');
+  fs.mkdirSync(notes, { recursive: true });
+  try { launchedIn(notes, () => block('a .git at the code folder itself: a web request', web(notes))); }
+  finally { fs.rmSync(path.join(repos, '.git'), { recursive: true, force: true }); }
+}
 launchedIn(campRepo, () => block('campaign repository: a web request', web(campRepo)));
 launchedIn(path.join(campRepo, 'drafts'), () => block('campaign repository, a sub-folder: a web request', web(path.join(campRepo, 'drafts'))));
 launchedIn(campTree, () => {

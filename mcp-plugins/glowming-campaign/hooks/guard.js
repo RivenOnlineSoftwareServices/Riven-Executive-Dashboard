@@ -28,7 +28,7 @@
  * (temporary working files) are allowed.
  *
  * A developer's checkout (devCheckout: the session was LAUNCHED inside a git working tree under the
- * owner's code folder, C:\repos or GLOWMING_DEV_ROOTS, that is neither a company folder nor a
+ * owner's code folder, <home drive>\repos, that is neither a company folder nor a
  * campaign repository, and the shell is still inside it): the blanket
  * shell rules (no web requests, no hidden code, no deep or very large script chains, no claim text
  * in shell writes) step aside there; everything that protects the company files still applies.
@@ -318,17 +318,17 @@ const CAMPAIGN_REMOTE = /^\s*url\s*=.*campaign/im;
 const CAMPAIGN_MARKER = '.glowming-campaign';
 
 /**
- * The folders that hold the owner's code repositories: GLOWMING_DEV_ROOTS (a path list), else
- * `<home drive>\repos` (C:\repos on the owner's machine). Fixed before any session starts: the
- * variable is inherited from the process Claude Code was started from, and the launch folder cannot
- * move, so no `git init` or `.git` written during a session (in the launch folder, above it or
- * elsewhere) can make a folder outside these count (Claude review 2026-10-03). Anton launches in
- * the synced folders, never under these.
+ * The folder that holds the owner's code repositories: `<home drive>\repos` (C:\repos on the owner's
+ * machine), fixed in this file. Nothing a session can write moves it: not an environment variable
+ * (`setx` would carry one into the next session), not a file. With the launch folder fixed too, no
+ * `git init` or `.git` written during a session (in the launch folder, above it or elsewhere) can
+ * make a folder outside it count (Claude review 2026-10-03). Anton launches in the synced folders,
+ * never there. `testRoots` is set only by the tests, in their own process.
  */
+let testRoots = null;
 function devRoots() {
-  const listed = String(process.env.GLOWMING_DEV_ROOTS || '').split(path.delimiter).map((s) => s.trim()).filter(Boolean);
-  const roots = listed.length ? listed : [path.join(path.parse(os.homedir()).root, 'repos')];
-  return roots.map((r) => norm(realLocation(r, process.cwd())).replace(/\/?$/, '/'));
+  return (testRoots || [path.join(path.parse(os.homedir()).root, 'repos')])
+    .map((r) => norm(realLocation(r, process.cwd())).replace(/\/?$/, '/'));
 }
 
 /** Whether `dir` is inside one of the dev roots (never the dev root itself). */
@@ -397,7 +397,7 @@ function devCheckout(cwd) {
   const project = realLocation(launched, process.cwd());
   if (isProtected(norm(project)) || !underDevRoot(project)) return false;
   const root = checkoutRoot(project);
-  if (!root || path.dirname(root) === root || norm(root) === norm(realLocation(os.homedir(), process.cwd()))) return false;
+  if (!root || !underDevRoot(root) || path.dirname(root) === root || norm(root) === norm(realLocation(os.homedir(), process.cwd()))) return false;
   if (!devRepository(root)) return false;
   const where = realLocation(cwd || launched, process.cwd());
   if (isProtected(norm(where))) return false;
@@ -623,7 +623,10 @@ function decide(event) {
   return null;
 }
 
-module.exports = { decide, checkWrite, checkNewFile, isTextFile, norm, sha1, walkFiles, snapId, CALENDAR, BANNED_CLAIMS };
+/** Tests only (their own process): stand in for the owner's code folder. */
+function setDevRootsForTests(roots) { testRoots = roots; }
+
+module.exports = { decide, checkWrite, checkNewFile, isTextFile, norm, sha1, walkFiles, snapId, CALENDAR, BANNED_CLAIMS, setDevRootsForTests };
 
 if (require.main === module) {
   let buf = '';
