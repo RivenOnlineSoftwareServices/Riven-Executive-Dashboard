@@ -75,8 +75,8 @@ A shell command, or a script it runs (the same three-level read as today), is re
   && cp x settings.json` and any `CLAUDE_CONFIG_DIR` location are caught) and the command is not a
   **single simple read** (G1): one command, no `;`, `&`, `|`, newline, redirect (other than to
   `/dev/null` / `nul`), `$(` or backtick, whose first word is one of `cat`, `type`, `head`, `tail`,
-  `less`, `more`, `get-content`, `gc`, `wc`, `stat`, `ls`, `dir`, `test-path`, `get-item`, and no
-  scripts run. A read through `grep`/`rg`/`jq` naming a settings file is refused (options such as
+  `less`, `more`, `get-content`, `gc`, `wc`, `stat`, `ls`, `dir`, `test-path`, `get-item` (such a
+  command runs no script, even when it reads one). A read through `grep`/`rg`/`jq` naming a settings file is refused (options such as
   `rg --pre` run programs); Anton never needs it.
 - full mode only: if its text names `CLAUDE_CODE_USER_EMAIL`, `CLAUDE_CODE_ENTRYPOINT`,
   `CLAUDE_CONFIG_DIR`, `CLAUDE_CODE_SIMPLE`, `CLAUDE_CODE_SAFE_MODE`, `disableAllHooks` or

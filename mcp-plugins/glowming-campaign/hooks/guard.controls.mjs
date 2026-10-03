@@ -14,6 +14,11 @@ const PLUGIN = join(HOOKS, "..");
 const COPY_DIR = mkdtempSync(join(tmpdir(), "gc-controls-"));
 const COPY = join(COPY_DIR, "guard.js");
 const original = readFileSync(join(HOOKS, "guard.js"), "utf8").split("\r\n").join("\n");
+// post.js mutations (an entry whose first edit is ["@post"]) run a mutated COPY of post.js beside an
+// unchanged copy of guard.js and calendar-links.js (post.js requires both from its own folder).
+const POST_COPY = join(COPY_DIR, "post.js");
+const originalPost = readFileSync(join(HOOKS, "post.js"), "utf8").split("\r\n").join("\n");
+writeFileSync(join(COPY_DIR, "calendar-links.js"), readFileSync(join(HOOKS, "calendar-links.js")));
 
 // [name, expected failing case (substring of its assertion message), [find, replace]...]
 const M = [
@@ -88,6 +93,89 @@ const M = [
   // A third element "all": every occurrence (the extension list appears three times in SCRIPT_FILE).
   ["F14 the script-name pattern widened again (a quoted command swallowed whole)", "beside a name the pattern does not know",
     ["|cjs|ts|ps1|", "|cjs|ts|mts|ps1|", "all"]],
+  // ---- who is working (operator ruling 2026-10-03: Anton, Etienne and Louis, never Riaan)
+  ["I1 off does not return early (Riaan is guarded)", "off: a web request",
+    ["if (who.mode === 'off') return null;", "if (false) return null;"]],
+  ["I2 an address from any launcher is trusted first", "an inherited address of unknown origin does not override Riaan",
+    ["if (email && APP_ENTRYPOINTS.includes(entrypoint)) return byEmail('1.1');", "if (email) return byEmail('1.1');"]],
+  ["I3 Riaan's machine by user name alone", "the user name riaan on another machine",
+    ["o.user === m.user && o.host === m.host", "o.user === m.user"]],
+  // I4/I5 go red at the very first case: the whole suite runs as Anton (in Cowork, on this machine).
+  ["I4 the machine is asked before the app-set address", "start-up: a web request from Anton's folder is refused",
+    ["  if (email && APP_ENTRYPOINTS.includes(entrypoint)) return byEmail('1.1');\n", ""]],
+  ["I5 a non-Riaan address counts as unknown", "start-up: a web request from Anton's folder is refused",
+    ["OWNER_EMAILS.includes(email) ? 'off' : 'full'", "OWNER_EMAILS.includes(email) ? 'off' : 'campaign'"]],
+  ["I6 the address is compared case-sensitively", "address in capitals",
+    ["String(process.env.CLAUDE_CODE_USER_EMAIL || '').trim().toLowerCase()", "String(process.env.CLAUDE_CODE_USER_EMAIL || '').trim()"]],
+  ["G1 the hook parses the tool call before asking who is working", "off: even a tool call that cannot be read is let through",
+    ["    if (id.mode === 'off') process.exit(0);\n", ""]],
+  // ---- campaign mode (no identity)
+  ["C1 campaign mode judges everything", "campaign: a web request that touches no company folder",
+    ["if (mode === 'campaign' && !(isProtected(nfull) || inFolder)) return null;", ""]],
+  ["C2 campaign mode judges nothing", "campaign: rm a company file",
+    ["if (mode === 'campaign' && !(isProtected(nfull) || inFolder)) return null;", "if (mode === 'campaign') return null;"]],
+  ["C3 campaign mode judges every connector call", "campaign: a send naming no company folder",
+    ["if (mode === 'campaign' && !touches()) return null;", ""]],
+  ["C4 campaign scope ignores the shell's own folder", "campaign: a command run inside a company folder",
+    ["if (mode === 'campaign' && !(isProtected(nfull) || inFolder)) return null;", "if (mode === 'campaign' && !isProtected(nfull)) return null;"]],
+  // ---- the tamper list
+  ["T1 the identity and setting names are not refused", "tamper: echo the identity variable",
+    ["if (full && TAMPER_NAMES.test(all))", "if (false && TAMPER_NAMES.test(all))"]],
+  ["T2 campaign mode gets the whole tamper list", "campaign: naming the identity variable is not refused",
+    ["shellTamper(cmd, scripts.text, mode !== 'campaign')", "shellTamper(cmd, scripts.text, true)"]],
+  ["T3 --bare and --safe-mode are not caught", "tamper: claude --bare",
+    ["(settings|setting-sources|plugin-dir|bare|safe-mode)", "(settings|setting-sources|plugin-dir)"]],
+  ["T4 switching the plugin off is not caught", "campaign: switching the plugin off",
+    ["if (PLUGIN_OFF.test(all) || CLAUDE_LAUNCH_FLAGS.test(all))", "if (CLAUDE_LAUNCH_FLAGS.test(all))"]],
+  ["T5 a reset of the .claude folder is not caught", "tamper: renaming the .claude folder",
+    ["if (REMOVE_SHELL.test(all) && CLAUDE_DIR.test(all))", "if (false)"]],
+  ["T6 a single & counts as a simple read", "tamper: a read and a copy joined by a single &",
+    ["if (/[;&|", "if (/[;|"]],
+  ["T7 a redirect counts as a simple read", "tamper: a redirect over the settings file",
+    [" || REDIRECT.test(c)) return false;", ") return false;"]],
+  ["T8 a settings file named in a command is not judged", "tamper: a redirect over the settings file",
+    ["if (SETTINGS_NAME.test(all) && !singleSimpleRead(cmd))", "if (false)"]],
+  // ---- settings files written by the file tools
+  ["S1 disableAllHooks may become true", "settings: disableAllHooks set true by Write",
+    ["  if (after.disableAllHooks && !before.disableAllHooks) return REFUSE;\n", ""]],
+  ["S2 the plugin's entry may be removed", "settings: the plugin entry removed",
+    ["  for (const k of Object.keys(pb)) if (", "  if (false) for (const k of Object.keys(pb)) if ("]],
+  ["S3 a new entry may switch the plugin off", "settings: a new settings file that switches the plugin off",
+    ["  for (const k of Object.keys(pa)) if (", "  if (false) for (const k of Object.keys(pa)) if ("]],
+  ["S4 the identity variables may change in settings", "settings: the identity value changed",
+    ["  for (const k of SETTINGS_ENV_KEYS) if (", "  if (false) for (const k of SETTINGS_ENV_KEYS) if ("]],
+  ["S5 a result that is not JSON passes", "settings: a result that is not JSON",
+    ["const after = next === null ? null : parse(next);", "const after = (next === null ? null : parse(next)) || {};"]],
+  ["S6 a settings.json in a .claude folder is not a settings file", "settings: disableAllHooks set true by Write",
+    ["  if (path.basename(dir).toLowerCase() === '.claude') return true;\n", ""]],
+  ["S7 the CLAUDE_CONFIG_DIR folder is not known", "settings: settings.json in the CLAUDE_CONFIG_DIR folder",
+    ["return !!cfg && norm(", "return false && norm("]],
+  ["S8 .claude.json is not a settings file", "settings: .claude.json anywhere",
+    ["if (base === '.claude.json' || base === 'managed-settings.json') return true;", "if (base === 'managed-settings.json') return true;"]],
+  ["N1 a command with no call id gets a copy nobody checks", "no call id: a command touching a company folder is refused",
+    ["  if (!id) return 'This command touches", "  if (false) return 'This command touches"]],
+  // ---- post.js
+  ["P1 an expired copy is checked and put back", "an expired copy is cleared quietly",
+    ["@post"], ["if (f === mine && manifest) {", "if ((f === mine || stale) && manifest) {"]],
+  ["P2 a check with no id checks every copy", "a check with no id restores nothing",
+    ["@post"], ["if (f === mine && manifest) {", "if ((f === mine || !callId) && manifest) {"]],
+  // The overlapping-calls case of section 3 runs first and depends on the same rule.
+  ["P3 another call's fresh copy is deleted", "call B is still checked against its own copy",
+    ["@post"], ["} else if (stale) {", "} else {"]],
+  ["P4 the displaced version is not kept", "the report names where the displaced version is kept",
+    ["@post"], ["      if (!keepDisplaced(e.path, recovery)) {", "      if (false) {"]],
+  ["P5 a version that could not be kept is put back anyway", "the report says it was not put back",
+    ["@post"], ["      if (!keepDisplaced(e.path, recovery)) {", "      if (!keepDisplaced(e.path, recovery) && false) {"]],
+  ["P6 off still checks and warns", "off: Riaan gets nothing",
+    ["@post"], ["  if (id.mode === 'off') return { code: 0, stdout: '', stderr: '' };\n", ""]],
+  ["P7 a failed call warns", "a failed call never warns",
+    ["@post"], ["const warning = failed ? null : warningFor(event, id.mode);", "const warning = warningFor(event, id.mode);"]],
+  ["P8 campaign mode warns about every write", "campaign: a scratch file is not checked",
+    ["@post"], ["if (mode === 'campaign' && !guard.isProtected(", "if (false && !guard.isProtected("]],
+  ["P9 any 13-19 digit run warns (no Luhn)", "a number that fails Luhn",
+    ["@post"], ["digits.length <= 19 && luhn(digits)", "digits.length <= 19"]],
+  // Not a control: post.js main returning before it parses is EQUIVALENT to run() returning at
+  // once for off (P6), so no output can tell them apart.
 ];
 
 // The table must still carry its backslashes (Dev Rule #30): F6 looks for a literal backslash-s.
@@ -95,8 +183,10 @@ if (!M.find((m) => m[0].startsWith("F6"))[2][0].includes(String.fromCharCode(92)
 
 let bad = 0;
 try {
-  for (const [name, expect, ...edits] of M) {
-    let text = original;
+  for (const [name, expect, ...rest] of M) {
+    const isPost = rest[0] && rest[0][0] === "@post";
+    const edits = isPost ? rest.slice(1) : rest;
+    let text = isPost ? originalPost : original;
     let applied = true;
     for (const [find, replace, all] of edits) {
       const n = text.split(find).length - 1;
@@ -104,8 +194,11 @@ try {
       text = all ? text.split(find).join(replace) : text.replace(find, () => replace);
     }
     if (!applied) { bad++; continue; }
-    writeFileSync(COPY, text);
-    const r = spawnSync(process.execPath, [join("hooks", "guard.test.js")], { cwd: PLUGIN, encoding: "utf8", env: { ...process.env, GUARD_PATH: COPY }, timeout: 300000 });
+    writeFileSync(COPY, isPost ? original : text);
+    if (isPost) writeFileSync(POST_COPY, text);
+    const env = { ...process.env, GUARD_PATH: COPY };
+    if (isPost) env.POST_PATH = POST_COPY;
+    const r = spawnSync(process.execPath, [join("hooks", "guard.test.js")], { cwd: PLUGIN, encoding: "utf8", env, timeout: 300000 });
     const out = (r.stdout || "") + (r.stderr || "");
     if (r.status === 0) { bad++; console.log(`${name}: SURVIVED`); continue; }
     const m = out.match(/AssertionError[^:]*:\s*([^\n]+)/);
