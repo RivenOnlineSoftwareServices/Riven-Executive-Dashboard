@@ -32,7 +32,7 @@ const M = [
   ["D5 a worktree is judged by its own folder only", "a worktree of the campaign repository living elsewhere",
     ["  if (st.isFile()) {\n", "  if (st.isFile()) return true;\n  if (false) {\n"]],
   ["D6 a checkout inside a company folder counts (every layer)", "a git checkout inside a company folder",
-    ["  if (isProtected(norm(project))) return false;\n", ""],
+    ["if (isProtected(norm(project)) || !underDevRoot", "if (!underDevRoot"],
     ["if (isProtected(norm(root)) || CAMPAIGN_REPO", "if (CAMPAIGN_REPO"],
     ["if (isProtected(norm(gitDir)) || CAMPAIGN_REPO", "if (CAMPAIGN_REPO"],
     ["  if (isProtected(norm(where))) return false;\n", ""]],
@@ -50,6 +50,8 @@ const M = [
     ["const where = realLocation(cwd || launched, process.cwd());", "const where = path.resolve(cwd || launched);"]],
   ["D12 a .git file that is not a worktree link counts", "a .git file that is not a worktree link",
     ["if (!link) return false;", "if (!link) return true;"]],
+  ["D20 a checkout outside the owner's code folder counts", "a .git written in Anton's own launch folder",
+    [" || !underDevRoot(project)) return false;", ") return false;"]],
   // ---- what still holds in a developer's checkout
   ["D13 a developer's checkout may delete company files", "dev: rm a company file",
     ["if ((isProtected(nfull) || inFolder) && REMOVE_SHELL.test(full))", "if (!dev && (isProtected(nfull) || inFolder) && REMOVE_SHELL.test(full))"]],
@@ -91,9 +93,14 @@ const M = [
   ["F10 atob is no longer caught", "a payload decoded with atob",
     ["\\batob\\(|", ""]],
   ["F11 a base64 Buffer is no longer caught", "a payload decoded from a base64 Buffer",
-    ["\\bfrom\\s*\\([^)]*,\\s*['\"]base64['\"]|", ""]],
+    ["\\bfrom\\s*\\([^)]*,\\s*['\"]base64(?:url)?['\"]|", ""]],
   ["F12 new Function is no longer caught", "code built with new Function",
     ["\\bnew\\s+Function\\s*\\(|", ""]],
+  ["F13 a base64url Buffer is no longer caught", "a payload decoded from a base64url Buffer",
+    ["base64(?:url)?['\"]|", "base64['\"]|"]],
+  // A third element "all": every occurrence (the extension list appears three times in SCRIPT_FILE).
+  ["F14 .mts scripts are not read", "a web request inside a .mts script",
+    ["|ts|mts|cts|tsx|", "|ts|cts|tsx|", "all"]],
 ];
 
 // The table must still carry its backslashes (Dev Rule #30): F2 looks for a literal backslash-s.
@@ -104,10 +111,10 @@ try {
   for (const [name, expect, ...edits] of M) {
     let text = original;
     let applied = true;
-    for (const [find, replace] of edits) {
+    for (const [find, replace, all] of edits) {
       const n = text.split(find).length - 1;
-      if (n !== 1) { applied = false; console.log(`${name}: NOT-APPLIED (${n} matches for ${JSON.stringify(find.slice(0, 60))})`); break; }
-      text = text.replace(find, () => replace);
+      if (all ? n < 1 : n !== 1) { applied = false; console.log(`${name}: NOT-APPLIED (${n} matches for ${JSON.stringify(find.slice(0, 60))})`); break; }
+      text = all ? text.split(find).join(replace) : text.replace(find, () => replace);
     }
     if (!applied) { bad++; continue; }
     writeFileSync(COPY, text);

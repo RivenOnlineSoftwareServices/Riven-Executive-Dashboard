@@ -106,6 +106,7 @@ const antonHome = path.join(root, 'Users', 'anton');
 fs.mkdirSync(antonHome, { recursive: true });
 process.chdir(antonHome);
 delete process.env.CLAUDE_PROJECT_DIR;
+delete process.env.GLOWMING_DEV_ROOTS;
 const caption = [
   'A5 Journey starts', '=================', '', 'CAPTION (post text):', 'Old post text.', '',
   'Headline:   Old headline', 'Short line: Old short', 'Button:     Sign up', '',
@@ -429,8 +430,10 @@ block('a Magnific prompt with an appetite claim', { tool_name: 'mcp__magnific__i
 // A code repository on an owner's machine starts servers, makes local requests and runs build scripts:
 // the blanket shell rules step aside there. Everything that protects the company files still applies,
 // and a campaign repository (or a worktree of one, wherever it lives) is never a developer's checkout.
-// Decided from the folder the session was LAUNCHED in (CLAUDE_PROJECT_DIR), which Claude cannot move.
+// Decided from the folder the session was LAUNCHED in (CLAUDE_PROJECT_DIR), which Claude cannot move,
+// and only under the owner's code folder (GLOWMING_DEV_ROOTS here; C:\repos on the owner's machine).
 const repos = path.join(root, 'repos');
+process.env.GLOWMING_DEV_ROOTS = repos;
 /** A git repository as git lays it out: .git/config with the given remote (an empty one if none). */
 const gitRepo = (dir, remote) => {
   fs.mkdirSync(path.join(dir, '.git'), { recursive: true });
@@ -468,11 +471,17 @@ fs.writeFileSync(path.join(oddLink, '.git'), 'not a worktree link' + NL);
 const campLocal = gitRepo(path.join(repos, 'Glowming-Campaign-local'));
 const campAlias = path.join(repos, 'alias');
 fs.symlinkSync(campLocal, campAlias, 'junction');
-// A git checkout kept INSIDE a company folder is company files, never a developer's checkout.
-const companyCode = gitRepo(path.join(base, 'ROSS - Documents', 'code'));
-// A dotfiles repository at the home folder makes nothing under it a developer's checkout.
-const homeRepo = gitRepo(path.join(root, 'Users', 'riaan'), 'https://github.com/someone/dotfiles.git');
+// A git checkout kept INSIDE a company folder is company files, never a developer's checkout (kept
+// under the dev root here, so the company-folder rule alone decides it).
+const companyCode = gitRepo(path.join(repos, '_Riven-Claude', 'code'));
+// A dotfiles repository at the home folder makes nothing under it a developer's checkout (kept under
+// the dev root here, so the home-folder rule alone decides it).
+const homeRepo = gitRepo(path.join(repos, 'home-riaan'), 'https://github.com/someone/dotfiles.git');
 fs.mkdirSync(path.join(homeRepo, 'Desktop'), { recursive: true });
+// A .git written during Anton's session, in his launch folder or above it (outside the dev root).
+const antonWork = gitRepo(path.join(antonHome, 'Work'));
+const annaHome = gitRepo(path.join(root, 'Users', 'anna'));
+fs.mkdirSync(path.join(annaHome, 'Desktop'), { recursive: true });
 /** Run `fn` as a session launched in `project` (undefined: no launch folder known). */
 const launchedIn = (project, fn) => {
   const was = process.env.CLAUDE_PROJECT_DIR;
@@ -513,6 +522,8 @@ block('the same five-level chain from Anton\'s folder (the depth rule itself sti
 launchedIn(devTree, () => allow('dev: launched in a linked worktree of the checkout', devB('curl -s http://localhost:3000/', devTree)));
 launchedIn(undefined, () => block('no launch folder known, standing in a checkout: a web request', web(devRepo)));
 launchedIn(antonHome, () => block('launched in Anton\'s folder, then cd + git init: a web request', web(freshInit)));
+launchedIn(antonWork, () => block('a .git written in Anton\'s own launch folder: a web request', web(antonWork)));
+launchedIn(path.join(annaHome, 'Desktop'), () => block('a .git written above the launch folder: a web request', web(path.join(annaHome, 'Desktop'))));
 launchedIn(campRepo, () => block('campaign repository: a web request', web(campRepo)));
 launchedIn(path.join(campRepo, 'drafts'), () => block('campaign repository, a sub-folder: a web request', web(path.join(campRepo, 'drafts'))));
 launchedIn(campTree, () => {
@@ -558,6 +569,8 @@ block('exec reached through the builtins', B('python "' + fpFile('bexec.py', ['i
 block('a payload decoded with atob', B('node "' + fpFile('atob.js', ['const p = atob(process.argv[2]);', 'console.log(p);']) + '"'));
 block('a payload decoded from a base64 Buffer', B('node "' + fpFile('buf.js', ['const p = Buffer.from(process.argv[2], "base64").toString();', 'console.log(p);']) + '"'));
 block('code built with new Function', B('node "' + fpFile('fn.js', ['const f = new Function(process.argv[2]);', 'f();']) + '"'));
+block('a payload decoded from a base64url Buffer', B('node "' + fpFile('bufu.js', ['const p = Buffer.from(process.argv[2], "base64url").toString();', 'console.log(p);']) + '"'));
+block('a web request inside a .mts script is read and refused', B('node "' + fpFile('call.mts', ['await fetch("https://example.com");']) + '"'));
 fs.rmSync(companyCode, { recursive: true, force: true });
 
 fs.rmSync(calPy, { force: true });

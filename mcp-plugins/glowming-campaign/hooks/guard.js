@@ -27,8 +27,9 @@
  * Everything else inside the company folders is read-only. Files outside them
  * (temporary working files) are allowed.
  *
- * A developer's checkout (devCheckout: the session was LAUNCHED inside a git working tree that is
- * neither a company folder nor a campaign repository, and the shell is still inside it): the blanket
+ * A developer's checkout (devCheckout: the session was LAUNCHED inside a git working tree under the
+ * owner's code folder, C:\repos or GLOWMING_DEV_ROOTS, that is neither a company folder nor a
+ * campaign repository, and the shell is still inside it): the blanket
  * shell rules (no web requests, no hidden code, no deep or very large script chains, no claim text
  * in shell writes) step aside there; everything that protects the company files still applies.
  *
@@ -262,14 +263,14 @@ const REDIRECT = /(^|[^=\-<>])(&|\d)?>{1,2}(?![&>=])/;
 // call on a name of its own (a regex's `pattern.exec(text)`) runs no code. Decoding a payload
 // (atob, a Buffer from base64, a new Function) counts too, whatever then runs it (Claude review
 // 2026-10-03).
-const HIDDEN_CODE = /-e(nc|ncodedcommand)?\s+[a-z0-9+/=]{16,}|-encodedcommand|frombase64string|base64\s+(-d|--decode)|b64decode|\beval\(|(?<![.\w$])exec\(|\b(?:builtins|__builtins__|globalThis|window|self|global)\s*\.\s*exec\(|\batob\(|\bfrom\s*\([^)]*,\s*['"]base64['"]|\bnew\s+Function\s*\(|\biex\b|invoke-expression|(^|[\s;&|])(python3?|py|node|ruby|perl)\s+-(\s|$)|(^|[\s;&|])(python3?|py|node)\s*<|\b(bash|sh|zsh)\s+-s\b|-command\s+-(\s|$)|(^|[\s;&|(])(bash|sh|zsh|dash|ksh|pwsh|powershell|cmd)(\.exe)?\s*<|\|\s*(bash|sh|zsh|dash|ksh|pwsh|powershell|cmd|python3?|py|node|ruby|perl|php)(\.exe)?(\s|$)/i;
+const HIDDEN_CODE = /-e(nc|ncodedcommand)?\s+[a-z0-9+/=]{16,}|-encodedcommand|frombase64string|base64\s+(-d|--decode)|b64decode|\beval\(|(?<![.\w$])exec\(|\b(?:builtins|__builtins__|globalThis|window|self|global)\s*\.\s*exec\(|\batob\(|\bfrom\s*\([^)]*,\s*['"]base64(?:url)?['"]|\bnew\s+Function\s*\(|\biex\b|invoke-expression|(^|[\s;&|])(python3?|py|node|ruby|perl)\s+-(\s|$)|(^|[\s;&|])(python3?|py|node)\s*<|\b(bash|sh|zsh)\s+-s\b|-command\s+-(\s|$)|(^|[\s;&|(])(bash|sh|zsh|dash|ksh|pwsh|powershell|cmd)(\.exe)?\s*<|\|\s*(bash|sh|zsh|dash|ksh|pwsh|powershell|cmd|python3?|py|node|ruby|perl|php)(\.exe)?(\s|$)/i;
 // A TypeScript type-only import or re-export (`import type { IncomingMessage } from "node:http"`) is
 // erased before the code runs: it names a module's types and makes no request, so NET_CALL ignores it
 // in a TypeScript script's text (never in the command). The braces hold names and commas only, so the
 // pattern can never swallow a command or a call (Claude review 2026-10-03).
 const TYPE_ONLY_IMPORT = /\b(?:import|export)\s+type\s+(?:\{[\s\w$,]*\}\s*|\*\s+as\s+[\w$]+\s+|[\w$]+\s+)from\s*(['"])[^'"\s]+\1/g;
 const TS_SCRIPT = /\.(ts|mts|cts|tsx)$/i;
-const SCRIPT_FILE = /(?:"([^"]+\.(?:py|js|mjs|cjs|ts|ps1|psm1|sh|bash|bat|cmd|pl|rb|php))"|'([^']+\.(?:py|js|mjs|cjs|ts|ps1|psm1|sh|bash|bat|cmd|pl|rb|php))'|([^\s'"]+\.(?:py|js|mjs|cjs|ts|ps1|psm1|sh|bash|bat|cmd|pl|rb|php)))(?=$|[\s;&|)\],}])/gi;
+const SCRIPT_FILE = /(?:"([^"]+\.(?:py|js|mjs|cjs|jsx|ts|mts|cts|tsx|ps1|psm1|sh|bash|bat|cmd|pl|rb|php))"|'([^']+\.(?:py|js|mjs|cjs|jsx|ts|mts|cts|tsx|ps1|psm1|sh|bash|bat|cmd|pl|rb|php))'|([^\s'"]+\.(?:py|js|mjs|cjs|jsx|ts|mts|cts|tsx|ps1|psm1|sh|bash|bat|cmd|pl|rb|php)))(?=$|[\s;&|)\],}])/gi;
 
 /**
  * The text of every script file a command runs, and of every script THOSE scripts name (three
@@ -316,6 +317,26 @@ const CAMPAIGN_REPO = /campaign/i;
 const CAMPAIGN_REMOTE = /^\s*url\s*=.*campaign/im;
 const CAMPAIGN_MARKER = '.glowming-campaign';
 
+/**
+ * The folders that hold the owner's code repositories: GLOWMING_DEV_ROOTS (a path list), else
+ * `<home drive>\repos` (C:\repos on the owner's machine). Fixed before any session starts: the
+ * variable is inherited from the process Claude Code was started from, and the launch folder cannot
+ * move, so no `git init` or `.git` written during a session (in the launch folder, above it or
+ * elsewhere) can make a folder outside these count (Claude review 2026-10-03). Anton launches in
+ * the synced folders, never under these.
+ */
+function devRoots() {
+  const listed = String(process.env.GLOWMING_DEV_ROOTS || '').split(path.delimiter).map((s) => s.trim()).filter(Boolean);
+  const roots = listed.length ? listed : [path.join(path.parse(os.homedir()).root, 'repos')];
+  return roots.map((r) => norm(realLocation(r, process.cwd())).replace(/\/?$/, '/'));
+}
+
+/** Whether `dir` is inside one of the dev roots (never the dev root itself). */
+function underDevRoot(dir) {
+  const d = norm(dir).replace(/\/?$/, '/');
+  return devRoots().some((r) => d.startsWith(r) && d !== r);
+}
+
 /** The nearest folder at or above `dir` that holds a .git (a folder, or a linked worktree's file), or null. */
 function checkoutRoot(dir) {
   let d = dir;
@@ -361,8 +382,8 @@ function devRepository(root) {
  * Whether the session works in a developer's checkout. Decided from the folder the session was
  * launched in (CLAUDE_PROJECT_DIR, set by Claude Code and fixed for the session; the hook's `cwd`
  * follows every `cd`, so it alone could be steered into a fresh `git init`): that folder must be
- * inside a developer's code repository (devRepository; never a checkout at the home folder or a
- * drive root), and the shell must still be inside that same checkout. There the blanket shell rules
+ * under a dev root (devRoots), inside a developer's code repository (devRepository; never a checkout
+ * at the home folder or a drive root), and the shell must still be inside that same checkout. There the blanket shell rules
  * below step aside: a code repository legitimately starts servers, makes local requests, and runs
  * test and build scripts that use eval/exec and chain many files (measured 2026-10-03: they refused
  * routine gates in a ROSS Suite session). The company files stay protected everywhere: file tools,
@@ -374,7 +395,7 @@ function devCheckout(cwd) {
   const launched = process.env.CLAUDE_PROJECT_DIR;
   if (!launched) return false; // without the launch folder, nothing shows the session is a code repository's
   const project = realLocation(launched, process.cwd());
-  if (isProtected(norm(project))) return false;
+  if (isProtected(norm(project)) || !underDevRoot(project)) return false;
   const root = checkoutRoot(project);
   if (!root || path.dirname(root) === root || norm(root) === norm(realLocation(os.homedir(), process.cwd()))) return false;
   if (!devRepository(root)) return false;

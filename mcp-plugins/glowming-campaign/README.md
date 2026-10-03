@@ -23,8 +23,9 @@ The Glowming Summer Campaign 2026 for owners who work with their own Claude (bui
   posting calendar is compared cell by cell for its tracking links, `hooks/calendar-links.js`); a new
   file where new files are not allowed is removed. So a shell command is judged by what it DID, not
   by guessing from its text.
-- **A developer's checkout** (the session was LAUNCHED inside a git checkout, read from
-  `CLAUDE_PROJECT_DIR`, that is neither a company folder nor a campaign repository nor a worktree of
+- **A developer's checkout** (the session was LAUNCHED, read from `CLAUDE_PROJECT_DIR`, inside a git
+  checkout under the owner's code folder, `C:\repos` by default or the folders listed in
+  `GLOWMING_DEV_ROOTS`, that is neither a company folder nor a campaign repository nor a worktree of
   one, and the shell is still inside it; never a checkout at the home folder or a drive root): the
   blanket shell rules (no web requests, no hidden code, no deep or very large script chains, no claim
   text in shell writes) step aside, because a code repository legitimately runs servers, local
