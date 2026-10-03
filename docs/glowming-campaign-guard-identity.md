@@ -1,7 +1,7 @@
 # Design note: the campaign guard is for Anton, Etienne and Louis, never for Riaan
 
-Rule #41 (a guard is a risk surface). Plugin `glowming-campaign`, 2026-10-03. Round 4: Codex design
-rounds 1 (C1-C7), 2 (D1-D7) and 3 (E1-E5) answered inline.
+Rule #41 (a guard is a risk surface). Plugin `glowming-campaign`, 2026-10-03. Round 5: Codex design
+rounds 1 (C1-C7), 2 (D1-D7), 3 (E1-E6) and 4 (F1-F6) answered inline.
 
 ## Why
 
@@ -60,10 +60,14 @@ operator-provisioned mapping for other surfaces (cloud, a new machine) is a foll
 Full mode, a shell command or a script it runs (the same three-level read as today) is refused if its
 text: names `CLAUDE_CODE_USER_EMAIL`, `CLAUDE_CODE_ENTRYPOINT`, `CLAUDE_CONFIG_DIR`, `disableAllHooks`
 or `enabledPlugins`; runs `claude plugin disable|uninstall|remove` or passes `--settings` /
-`--setting-sources` / `--plugin-dir` to a `claude` launch; or names a Claude settings file
-(`settings.json` / `settings.local.json` under a `.claude` folder, `.claude.json`,
-`managed-settings.json`) and is not a plain read (`isReadOnly`). So copying any file over a settings
-file is refused by its destination, whatever the source file is called (E4).
+`--setting-sources` / `--plugin-dir` to a `claude` launch; or names a Claude settings file and is
+not a **strict read**. A settings file (E4, F2) is any path candidate (the same pieces
+`foldersNamed` splits a command into), resolved from the shell's folder through links, whose name is
+`.claude.json` or `managed-settings.json`, or `settings.json` / `settings.local.json` inside a folder
+named `.claude` or inside the folder `CLAUDE_CONFIG_DIR` points to (resolved the same way). A strict
+read (F1) is `isReadOnly()` AND no redirect (`>`, `>>`, `2>` ... other than to `/dev/null` / `nul`)
+AND no command substitution or backtick. So `cp x ~/.claude/settings.json` and
+`cat x > ~/.claude/settings.json` are refused by their destination, whatever the source is called.
 
 Full and campaign mode, a file-tool write to a Claude settings file (`settings.json`,
 `settings.local.json`, `managed-settings.json`, `.claude.json`) is judged on the **parsed** current and
@@ -91,9 +95,12 @@ company marker (`/tmp/2026 Summer Campaign`) is judged in every mode but off.
 
 ## Snapshots (C5, D5, E5)
 
-A snapshot is processed only by the post hook of the call that took it (`tool_use_id`, recorded with
-its `session_id`). A snapshot older than six hours, or with no matching call, is deleted without
-restoring. `post.js` also runs on `PostToolUseFailure`. In off mode `post.js` touches no snapshot.
+A snapshot is processed (compared, put back where the rules say) only by the post hook whose
+`tool_use_id` matches the one recorded with it (F3). Every other snapshot younger than six hours is
+left untouched, whatever its session. A snapshot older than six hours is deleted without restoring
+anything. A post hook with no `tool_use_id` processes nothing and only deletes expired snapshots: the
+current "no id, check every snapshot" fallback (`post.js` `verifyAll` with no id) is removed.
+`post.js` also runs on `PostToolUseFailure`. In off mode `post.js` touches no snapshot.
 
 **D5, concurrent writers.** Riaan never runs the guard, so his own sessions never restore anything.
 A guarded session on ANOTHER machine compares a folder before and after one shell command; a change
@@ -126,9 +133,18 @@ separate from warnings.
 `guard.js` and `post.js` record, on every run in every mode, one non-secret line to
 `<tmp>/glowming-guard-identity.json`: hook name, mode, which rule decided (1.1 / 1.2 / 1.3 / 1.4),
 the entrypoint, the address's domain only, time. Checks owed after install, per surface: Riaan's
-desktop Code and Cowork on the Zenbook, the Mac, Anton's DELL: run any harmless tool call, read the
-file (in Cowork: inside the VM's temp folder). Expected: off / off / off / full. This lane cannot
-run them (no new sessions); they are listed as owed.
+desktop Code, plain CLI and Cowork on the Zenbook, the Mac (desktop Code and CLI), Anton's DELL
+(Cowork, desktop Code), a cloud session: run any harmless tool call, read the file (in Cowork:
+inside the VM's temp folder). Expected: off on every Riaan surface, full on Anton's. Plus a
+warning-delivery check (F5): in Anton's Cowork and desktop Code, write a scratch file holding a fake
+`sk-...` key outside the company folders; expected: a warning line shown, Claude explains it; the
+same in Riaan's sessions: nothing. This lane cannot run them (no new sessions); they are owed.
+
+**"Never Riaan" holds on verified surfaces only (F4).** Verified here: the Zenbook desktop Code tab
+(1.1, measured environment) and the Zenbook plain CLI (1.2, measured user and machine). By source or
+record, live check owed: Cowork (1.1), the Mac (1.1 or 1.2). Not covered: a cloud session or new
+machine with no Riaan address and an unprovisioned account (1.4, campaign); provisioning those is a
+follow-up.
 
 ## What each surface does now
 
