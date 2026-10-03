@@ -754,6 +754,8 @@ block('tamper: a quoted Windows path to claude.exe', { tool_name: 'PowerShell', 
 block('tamper: a quoted POSIX path to claude', B('"/usr/local/bin/claude" plugin disable glowming-campaign@riven-exec'));
 block('tamper: process substitution inside a read', B('cat ~/.claude/settings.json <(cp /tmp/clean.json ~/.claude/settings.json)'));
 block('tamper: input redirection into a read', B('cat < ~/.claude/settings.json'));
+block('tamper: a PowerShell command nested inside a read', { tool_name: 'PowerShell', tool_input: { command: 'Get-Content (Copy-Item ./clean.json ~/.claude/settings.json -PassThru)' } });
+as(null, null, DELL, () => block('campaign: a PowerShell command nested inside a read', { tool_name: 'PowerShell', tool_input: { command: 'Get-Content (Copy-Item ./clean.json ~/.claude/settings.json -PassThru)' } }));
 {
   // A plain read of a script runs nothing, so the script's text is not judged as run (Codex code r1).
   const ex = path.join(antonHome, 'example.py');
@@ -793,6 +795,18 @@ block('settings: safe mode added to env', W(settingsFile, settingsText.replace('
 block('settings: a notebook tool aimed at a settings file', { tool_name: 'NotebookEdit', tool_input: { notebook_path: settingsFile, new_source: 'x' } });
 allow('settings: another plugin turned on', E(settingsFile, '"glowming-campaign@riven-exec": true', '"glowming-campaign@riven-exec": true, "pulse@riven-exec": true'));
 allow('settings: a new settings file with an ordinary setting', W(path.join(antonHome, 'proj', '.claude', 'settings.local.json'), JSON.stringify({ model: 'opus' })));
+block('settings: managed-settings.json anywhere', W(path.join(antonHome, 'managed-settings.json'), JSON.stringify({ disableAllHooks: true })));
+as(null, null, DELL, () => block('campaign: disableAllHooks written to a settings file', W(settingsFile, settingsText.replace('"disableAllHooks": false', '"disableAllHooks": true'))));
+{
+  // A .claude folder that is a link to a neutral folder: the path as written still says settings.
+  const dot = path.join(antonHome, 'dotfiles');
+  const home2 = path.join(antonHome, 'home2');
+  fs.mkdirSync(dot, { recursive: true });
+  fs.mkdirSync(home2, { recursive: true });
+  fs.writeFileSync(path.join(dot, 'settings.json'), JSON.stringify({ disableAllHooks: false }, null, 2));
+  fs.symlinkSync(dot, path.join(home2, '.claude'), 'junction');
+  block('settings: a .claude folder that is a link to a neutral folder', E(path.join(home2, '.claude', 'settings.json'), '"disableAllHooks": false', '"disableAllHooks": true'));
+}
 block('settings: .claude.json anywhere', W(path.join(antonHome, '.claude.json'), JSON.stringify({ disableAllHooks: true })));
 allow('settings: VS Code\'s settings.json (with comments) is not Claude\'s', W(path.join(antonHome, 'proj', '.vscode', 'settings.json'), '// editor' + NL + '{ "a": 1 }'));
 {
@@ -923,6 +937,9 @@ assert.strictEqual(guard.decide(B('ls /tmp')), null, 'no call id: a command touc
   assert.ok(post.run(ev({ file_path: scratch, content: 'password = abc' }), full).stdout.includes('password'), 'a short password written out (Codex code r1)'); passed++;
   // Every warned shape and every file tool (Codex code r2). No output parses as no warning.
   const safeJson = (s) => { try { return JSON.parse(s) || {}; } catch (e) { return {}; } };
+  // A JSON property counts as an assignment (full-context round).
+  const rjs = post.run(ev({ file_path: scratch + '.json', content: '{"password":"abc","api_key":"zz9"}' }), full);
+  assert.ok(rjs.code === 0 && (safeJson(rjs.stdout).systemMessage || '').includes('password') && !rjs.stdout.includes('zz9'), 'a password as a JSON property'); passed++;
   const pk = '-----BEGIN ' + 'RSA PRIVATE KEY-----' + NL + 'MIIB' + NL;
   const rpk = post.run(ev({ file_path: scratch, content: pk }), full);
   assert.ok(rpk.code === 0 && (safeJson(rpk.stdout).systemMessage || "").includes('key or access token') && !rpk.stdout.includes('MIIB'), 'a private key block'); passed++;

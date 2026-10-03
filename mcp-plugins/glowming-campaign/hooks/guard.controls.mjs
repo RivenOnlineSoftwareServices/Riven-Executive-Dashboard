@@ -172,7 +172,7 @@ const M = [
     ["@post"], ["[^\\s\"']+/i;", "[^\\s\"']{6,}/i;"]],
   ["P14 the campaign warning takes the target as written (links not followed)", "campaign: a write through a junction into a company folder is warned about",
     ["@post"], ["guard.realLocation(String(target), event.cwd || process.cwd())", "path.resolve(event.cwd || process.cwd(), String(target))"]],
-  ["T9 input redirection and process substitution count as a simple read", "tamper: process substitution inside a read",
+  ["T9 input redirection counts as a simple read (process substitution is caught by its bracket too)", "tamper: input redirection into a read",
     ["if (/[;&|<", "if (/[;&|"]],
   ["T10 a quoted claude executable is not caught", "tamper: a quoted Windows path to claude.exe",
     ["claude(\\.exe)?[\"']?\\s+plugins?", "claude(\\.exe)?\\s+plugins?"]],
@@ -199,6 +199,16 @@ const M = [
     ["@post"], ["if (tool === 'MultiEdit') return", "if (false) return"]],
   ["P18 a NotebookEdit is not read", "a key in a NotebookEdit",
     ["@post"], ["if (tool === 'NotebookEdit') return", "if (false) return"]],
+  ["T12 a PowerShell bracket counts as a simple read", "tamper: a PowerShell command nested inside a read",
+    ["<(){}\\n", "<\\n"]],
+  ["S9 managed-settings.json is not a settings file", "settings: managed-settings.json anywhere",
+    ["if (base === '.claude.json' || base === 'managed-settings.json') return true;", "if (base === '.claude.json') return true;"]],
+  ["S10 settings files are judged in full mode only", "campaign: disableAllHooks written to a settings file",
+    ["if (isSettingsFile(written) || isSettingsFile(raw)) {", "if (who.mode === 'full' && (isSettingsFile(written) || isSettingsFile(raw))) {"]],
+  ["S11 a settings file is known only where it resolves", "settings: a .claude folder that is a link to a neutral folder",
+    ["if (isSettingsFile(written) || isSettingsFile(raw)) {", "if (isSettingsFile(raw)) {"]],
+  ["P19 a quoted JSON key is not an assignment", "a password as a JSON property",
+    ["@post"], ["token)\\b[\"']?\\s*[:=]", "token)\\b\\s*[:=]"]],
   ["C5 the shell's folder is taken as written (a junction into a company folder is outside)", "campaign: a command run in a junction that leads into a company folder",
     ["const inFolder = isProtected(norm(cwd || '')) || (!!cwd && isProtected(norm(realLocation(cwd, process.cwd()))));", "const inFolder = isProtected(norm(cwd || ''));"]],
   ["P4 the displaced version is not kept", "the report names where the displaced version is kept",
@@ -221,8 +231,12 @@ const M = [
 if (!M.find((m) => m[0].startsWith("F6"))[2][0].includes(String.fromCharCode(92) + "s")) throw new Error("backslashes lost in the mutation table");
 
 let bad = 0;
+const only = process.env.CONTROLS_ONLY ? new RegExp(process.env.CONTROLS_ONLY) : null;
 try {
+  // CONTROLS_ONLY=<regex> runs the matching controls only (a quick re-check); the full run is the evidence.
+
   for (const [name, expect, ...rest] of M) {
+    if (only && !only.test(name)) continue;
     const isPost = rest[0] && rest[0][0] === "@post";
     const edits = isPost ? rest.slice(1) : rest;
     let text = isPost ? originalPost : original;
@@ -248,5 +262,6 @@ try {
 } finally {
   rmSync(COPY_DIR, { recursive: true, force: true });
 }
-console.log(`\n${M.length - bad}/${M.length} controls RED for the right case`);
+const ran = only ? M.filter((m) => only.test(m[0])).length : M.length;
+console.log(`\n${ran - bad}/${ran} controls RED for the right case`);
 process.exit(bad ? 1 : 0);

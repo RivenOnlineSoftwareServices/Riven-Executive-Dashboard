@@ -342,7 +342,8 @@ const SIMPLE_READ = /^\s*(cat|type|head|tail|less|more|get-content|gc|wc|stat|ls
  */
 function singleSimpleRead(cmd) {
   const c = cmd.replace(/(&|\d)?>{1,2}\s*(\/dev\/null|nul)\b/gi, '');
-  if (/[;&|<\n\r`]|\$\(/.test(c) || REDIRECT.test(c)) return false;
+  // Brackets and braces too: PowerShell runs a command inside ( ) or { } before the read (full-context round).
+  if (/[;&|<(){}\n\r`]|\$\(/.test(c) || REDIRECT.test(c)) return false;
   return SIMPLE_READ.test(c);
 }
 
@@ -755,7 +756,11 @@ function decide(event, id) {
     const given = input.file_path || input.notebook_path || '';
     if (given) {
       const raw = realLocation(given, cwd);
-      if (isSettingsFile(raw)) { const t = checkSettingsWrite(tool, input, raw); if (t) return t; }
+      // A settings file is known by the path as written AND by where it resolves: a .claude folder or a
+      // settings.json that is a link to a neutral file is still a settings file (full-context round).
+      const g = String(given);
+      const written = path.resolve(cwd, g === '~' || g.startsWith('~/') || g.startsWith('~' + path.sep) ? path.join(os.homedir(), g.slice(1)) : g);
+      if (isSettingsFile(written) || isSettingsFile(raw)) { const t = checkSettingsWrite(tool, input, raw); if (t) return t; }
     }
     return checkWrite(tool, input, cwd);
   }

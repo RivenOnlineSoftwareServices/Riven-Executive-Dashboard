@@ -182,7 +182,7 @@ function judgeChange(entry, nowBuf, cwd) {
 
 // ---- The warning --------------------------------------------------------------------------------
 const KEY_SHAPES = /-----BEGIN [A-Z ]*PRIVATE KEY-----|\b(?:sk-(?:ant-|proj-)?[A-Za-z0-9_-]{20,}|sk_live_[A-Za-z0-9]{16,}|rk_live_[A-Za-z0-9]{16,}|ghp_[A-Za-z0-9]{30,}|github_pat_[A-Za-z0-9_]{30,}|xox[abpr]-[A-Za-z0-9-]{10,}|AKIA[0-9A-Z]{16}|AIza[0-9A-Za-z_-]{35}|shpat_[a-fA-F0-9]{32}|EAA[A-Za-z0-9]{60,})/;
-const ASSIGNED = /\b(?:password|passwd|pwd|secret|api[ _-]?key|access[ _-]?token|auth[ _-]?token|token)\b\s*[:=]\s*["']?[^\s"']+/i;
+const ASSIGNED = /\b(?:password|passwd|pwd|secret|api[ _-]?key|access[ _-]?token|auth[ _-]?token|token)\b["']?\s*[:=]\s*["']?[^\s"']+/i;
 const DIGIT_RUN = /(?<!\d)(?:\d[ -]?){12,18}\d(?!\d)/g;
 
 function luhn(digits) {
