@@ -1,7 +1,7 @@
 # Design note: the campaign guard is for Anton, Etienne and Louis, never for Riaan
 
-Rule #41 (a guard is a risk surface). Plugin `glowming-campaign`, 2026-10-03. Round 5: Codex design
-rounds 1 (C1-C7), 2 (D1-D7), 3 (E1-E6) and 4 (F1-F6) answered inline.
+Rule #41 (a guard is a risk surface). Plugin `glowming-campaign`, 2026-10-03. Round 6: Codex design
+rounds 1 (C1-C7), 2 (D1-D7), 3 (E1-E6), 4 (F1-F6) and 5 (G1-G5) answered inline.
 
 ## Why
 
@@ -33,7 +33,7 @@ Forging an identity variable is deliberate, so it is in the same class as disabl
    3. An address from any other launcher (plain CLI, cloud): Riaan's -> **off**; any other -> **full**.
    4. Nothing usable -> **campaign**.
 2. **off:** `guard.js` allows; `post.js` returns before any check, put-back or warning.
-3. **Tamper rule** (full: every call; campaign: file-tool writes to settings files only), before scope.
+3. **Tamper rule** (full: all of it; campaign: settings files and plugin-disable commands, G4), before scope.
 4. **full:** the 0.1.3 guard unchanged, with #19's step-aside in a developer's checkout.
 5. **campaign:** scope discovery, then out-of-scope calls are allowed, in-scope calls judged by every
    full-mode rule (below).
@@ -57,20 +57,25 @@ operator-provisioned mapping for other surfaces (cloud, a new machine) is a foll
 
 ## Tamper rule (C3, D3, E3, E4)
 
-Full mode, a shell command or a script it runs (the same three-level read as today) is refused if its
-text: names `CLAUDE_CODE_USER_EMAIL`, `CLAUDE_CODE_ENTRYPOINT`, `CLAUDE_CONFIG_DIR`, `disableAllHooks`
-or `enabledPlugins`; runs `claude plugin disable|uninstall|remove` or passes `--settings` /
-`--setting-sources` / `--plugin-dir` to a `claude` launch; or names a Claude settings file and is
-not a **strict read**. A settings file (E4, F2) is any path candidate (the same pieces
-`foldersNamed` splits a command into), resolved from the shell's folder through links, whose name is
-`.claude.json` or `managed-settings.json`, or `settings.json` / `settings.local.json` inside a folder
-named `.claude` or inside the folder `CLAUDE_CONFIG_DIR` points to (resolved the same way). A strict
-read (F1) is `isReadOnly()` AND no redirect (`>`, `>>`, `2>` ... other than to `/dev/null` / `nul`)
-AND no command substitution or backtick. So `cp x ~/.claude/settings.json` and
-`cat x > ~/.claude/settings.json` are refused by their destination, whatever the source is called.
+A shell command, or a script it runs (the same three-level read as today), is refused:
+- full and campaign mode: if its text runs `claude plugin disable|uninstall|remove` or passes
+  `--settings` / `--setting-sources` / `--plugin-dir` to a `claude` launch; or if its text contains a
+  Claude settings file NAME (`settings.json`, `settings.local.json`, `.claude.json`,
+  `managed-settings.json`, matched as a word in the text, NOT resolved to a folder: G2, so `cd ~/.claude
+  && cp x settings.json` and any `CLAUDE_CONFIG_DIR` location are caught) and the command is not a
+  **single simple read** (G1): one command, no `;`, `&`, `|`, newline, redirect (other than to
+  `/dev/null` / `nul`), `$(` or backtick, whose first word is one of `cat`, `type`, `head`, `tail`,
+  `less`, `more`, `get-content`, `gc`, `wc`, `stat`, `ls`, `dir`, `test-path`, `get-item`, and no
+  scripts run. A read through `grep`/`rg`/`jq` naming a settings file is refused (options such as
+  `rg --pre` run programs); Anton never needs it.
+- full mode only: if its text names `CLAUDE_CODE_USER_EMAIL`, `CLAUDE_CODE_ENTRYPOINT`,
+  `CLAUDE_CONFIG_DIR`, `disableAllHooks` or `enabledPlugins` (campaign mode leaves these out, so an
+  unidentified Riaan can still mention them).
 
-Full and campaign mode, a file-tool write to a Claude settings file (`settings.json`,
-`settings.local.json`, `managed-settings.json`, `.claude.json`) is judged on the **parsed** current and
+Full and campaign mode, a file-tool write to a Claude settings file (the target path, resolved:
+`settings.json` / `settings.local.json` inside a folder named `.claude` or the `CLAUDE_CONFIG_DIR`
+folder, or `.claude.json` / `managed-settings.json` anywhere; a project's own or VS Code's
+`settings.json` elsewhere is not one) is judged on the **parsed** current and
 resulting JSON (E3): refused if `disableAllHooks` becomes true, any `enabledPlugins` key starting
 `glowming-campaign@` is set false or removed, or `env.CLAUDE_CODE_USER_EMAIL`,
 `env.CLAUDE_CODE_ENTRYPOINT` or `env.CLAUDE_CONFIG_DIR` is added, changed or removed. If the resulting
@@ -89,7 +94,9 @@ files (a document that mentions the variable) are not affected.
 3. **Touching:** every full-mode rule (deletes refused, blanket shell rules, the copy post.js checks,
    connector rules), with #19's step-aside.
 
-Stated consequences (C4): a remote company resource reached only by ID (a Graph `DELETE` on an item
+Stated consequences (C4, G3, G4): this is approval of the documented scope, with provisioning for
+cloud sessions and new machines outstanding; campaign mode does not stop a runtime-built name or a
+setting changed by a script that names neither a settings file nor a plugin command; a remote company resource reached only by ID (a Graph `DELETE` on an item
 ID, an email send by message ID) is not judged in campaign mode; a disposable folder named with a
 company marker (`/tmp/2026 Summer Campaign`) is judged in every mode but off.
 
