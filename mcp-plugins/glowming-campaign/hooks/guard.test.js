@@ -17,6 +17,7 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const zlib = require('zlib');
+const childProcess = require('child_process');
 
 const NL = String.fromCharCode(10);
 const guard = require(process.env.GUARD_PATH || './guard.js');
@@ -92,6 +93,10 @@ const LINK2 = 'https://glowming.co.za/pages/journey?utm_source=meta&utm_content=
 
 // ---- a folder laid out like Anton's synced folders --------------------------------------------
 const root = fs.mkdtempSync(path.join(os.tmpdir(), 'gc-guard-'));
+// Removed however the run ends, a failed assertion included (every negative control ends one early).
+process.on('exit', () => {
+  try { process.chdir(os.tmpdir()); fs.rmSync(root, { recursive: true, force: true }); } catch (e) { /* best effort */ }
+});
 const base = path.join(root, 'Riven Online Software Services');
 const shared = path.join(base, 'ROSS - Documents', '_Riven-Claude', 'Glowming Summer Campaign');
 const camp = path.join(base, 'Glowming-SA Operations - Documents', 'SA Operations', 'Marketing', '2026 Summer Campaign');
@@ -366,7 +371,9 @@ shell('a calendar save that adds a plain cell (benign)', B('python cal.py "' + f
 // Codex round 9.
 {
   // A folder link (junction) whose own name says nothing about the company folders.
-  const link = path.join(os.tmpdir(), 'gc-link-' + process.pid);
+  // Inside this run's own folder: a fixed name in the shared temp folder outlived an aborted run and
+  // was picked up again when Windows reused the process id (measured 2026-10-03).
+  const link = path.join(root, 'gc-link');
   try { fs.symlinkSync(shared, link, 'junction'); } catch (e) { /* no link support: skip */ }
   if (fs.existsSync(link)) {
     shell('a write through a folder link into the shared folder', B('python -c "open(\'linked/riaan.md\',\'w\').write(\'x\')"'.replace('linked', link.split(path.sep).join('/'))), w('riaan', 'changed'), STOPPED);
@@ -433,18 +440,27 @@ block('a Magnific prompt with an appetite claim', { tool_name: 'mcp__magnific__i
 // and only under the owner's code folder (C:\repos on the owner's machine; this folder here).
 const repos = path.join(root, 'repos');
 guard.setDevRootsForTests([repos]);
-/** A git repository as git lays it out: .git/config with the given remote (an empty one if none). */
+/** git, in `dir`; the guard asks git itself, so the fixtures are real repositories. */
+const git = (dir, ...args) => {
+  const r = childProcess.spawnSync('git', ['-C', dir, ...args], { encoding: 'utf8' });
+  if (r.status !== 0) throw new Error('git ' + args.join(' ') + ' in ' + dir + ': ' + r.stderr);
+  return r.stdout;
+};
+/** A real git repository at `dir`, with the given remote (none if not given). */
 const gitRepo = (dir, remote) => {
-  fs.mkdirSync(path.join(dir, '.git'), { recursive: true });
-  fs.writeFileSync(path.join(dir, '.git', 'config'), '[core]' + NL + (remote ? '[remote "origin"]' + NL + '\turl = ' + remote + NL : ''));
+  fs.mkdirSync(dir, { recursive: true });
+  git(dir, 'init', '-q');
+  if (remote) git(dir, 'remote', 'add', 'origin', remote);
   return dir;
 };
-/** A linked worktree of `main` at `dir`, as git writes it (.git file -> gitdir, whose commondir names main's .git). */
+/** A linked worktree of `main` at `dir`, as git writes it (.git file -> gitdir with HEAD, commondir, gitdir). */
 const worktree = (dir, main, name) => {
   const gd = path.join(main, '.git', 'worktrees', name);
   fs.mkdirSync(gd, { recursive: true });
+  fs.writeFileSync(path.join(gd, 'HEAD'), 'ref: refs/heads/' + name + NL);
   fs.writeFileSync(path.join(gd, 'commondir'), '../..' + NL);
   fs.mkdirSync(dir, { recursive: true });
+  fs.writeFileSync(path.join(gd, 'gitdir'), path.join(dir, '.git') + NL);
   fs.writeFileSync(path.join(dir, '.git'), 'gitdir: ' + gd + NL);
   return dir;
 };
@@ -460,6 +476,23 @@ const campTree = worktree(path.join(repos, 'tidy-copy'), campRepo, 'tidy');
 const renamedClone = gitRepo(path.join(repos, 'gsc'), 'https://github.com/RivenOnlineSoftwareServices/Glowming-Summer-Campaign-2026.git');
 const markedRepo = gitRepo(path.join(repos, 'Glowming-Winter-Promo-2027'), 'https://github.com/RivenOnlineSoftwareServices/Glowming-Winter-Promo-2027.git');
 fs.writeFileSync(path.join(markedRepo, '.glowming-campaign'), 'campaign work' + NL);
+// The campaign remote hidden from a plain reading of .git/config, each way git still resolves it
+// (Codex 2026-10-03): a value continued across lines, an included file, a URL rewrite.
+const BS = String.fromCharCode(92);
+const splitRemote = gitRepo(path.join(repos, 'neutral-split'));
+fs.appendFileSync(path.join(splitRemote, '.git', 'config'), '[remote "origin"]' + NL + '\turl = https://github.com/RivenOnlineSoftwareServices/Glowming-Summer-Cam' + BS + NL + 'paign-2026.git' + NL);
+assert.ok(fs.readFileSync(path.join(splitRemote, '.git', 'config'), 'utf8').includes('Cam' + BS + NL + 'paign'), 'the fixture keeps its line continuation');
+assert.ok(/campaign/i.test(git(splitRemote, 'config', '--get', 'remote.origin.url')), 'git resolves the split remote');
+const includedRemote = gitRepo(path.join(repos, 'neutral-include'));
+fs.writeFileSync(path.join(repos, 'neutral-include.cfg'), '[remote "origin"]' + NL + '\turl = https://github.com/RivenOnlineSoftwareServices/Glowming-Summer-Campaign-2026.git' + NL);
+fs.appendFileSync(path.join(includedRemote, '.git', 'config'), '[include]' + NL + '\tpath = ../../neutral-include.cfg' + NL);
+const rewrittenRemote = gitRepo(path.join(repos, 'neutral-rewrite'), 'gsc:main');
+git(rewrittenRemote, 'config', 'url.https://github.com/RivenOnlineSoftwareServices/Glowming-Summer-Campaign-2026.git.insteadOf', 'gsc:main');
+// A config git refuses; a .git folder that is not a repository at all.
+const brokenConfig = gitRepo(path.join(repos, 'broken'));
+fs.appendFileSync(path.join(brokenConfig, '.git', 'config'), '[[ not a section' + NL);
+const hollow = path.join(repos, 'hollow');
+fs.mkdirSync(path.join(hollow, '.git'), { recursive: true });
 // A folder made into a checkout from Anton's session (cd + git init); a .git file that is not a worktree link.
 const freshInit = gitRepo(path.join(repos, 'fresh'));
 const oddLink = path.join(repos, 'odd');
@@ -537,6 +570,11 @@ launchedIn(campTree, () => {
 });
 launchedIn(renamedClone, () => block('a clone of the campaign repository under another name: a web request', web(renamedClone)));
 launchedIn(markedRepo, () => block('a campaign repository named otherwise, with the marker file: a web request', web(markedRepo)));
+launchedIn(splitRemote, () => block('a campaign remote continued across two lines of .git/config: a web request', web(splitRemote)));
+launchedIn(includedRemote, () => block('a campaign remote in an included config file: a web request', web(includedRemote)));
+launchedIn(rewrittenRemote, () => block('a campaign remote reached through a URL rewrite: a web request', web(rewrittenRemote)));
+launchedIn(brokenConfig, () => block('a .git/config git refuses: a web request', web(brokenConfig)));
+launchedIn(hollow, () => block('a .git folder that is not a repository: a web request', web(hollow)));
 launchedIn(campAlias, () => block('a junction with a neutral name into the campaign repository: a web request', web(campAlias)));
 launchedIn(oddLink, () => block('a .git file that is not a worktree link: a web request', web(oddLink)));
 launchedIn(companyCode, () => block('a git checkout inside a company folder: a web request', web(companyCode)));
@@ -595,6 +633,12 @@ block('a type-only import line inside a Python script is not exempt',
   B('python "' + fpFile('types.py', ['# import type { IncomingMessage } from "node:http"', 'print(1)']) + '"'));
 allow('a regex\'s .exec( is not hidden code', B('node "' + fpFile('rx.js', ['const m = /a(b)/.exec("ab");', 'const re = /c/g; re.exec("c");', 'console.log(m);']) + '"'));
 block('a bare exec( still is', B('python "' + fpFile('run.py', ['code = open("x.py").read()', 'exec(code)']) + '"'));
+block('Python exec through an alias of builtins, in the command (Codex)',
+  B('python -c "import builtins as b; b.exec(bytes.fromhex(\'7072696e74283432290a\').decode())"'));
+block('Python exec through an alias of builtins, in a script', B('python "' + fpFile('alias.py', ['import builtins as b', 'b.exec(bytes.fromhex("7072696e74283432290a").decode())']) + '"'));
+block('Python exec with a space before the bracket', B('python "' + fpFile('spaced.py', ['exec (open("x.py").read())']) + '"'));
+block('a child process given a command decoded from hex', B('node "' + fpFile('hex.js', ['require("child_process").exec(Buffer.from(process.argv[2], "hex").toString());']) + '"'));
+allow('a regex\'s .exec( in a TypeScript script is not hidden code', B('node "' + fpFile('rx.ts', ['const m: RegExpExecArray | null = /a(b)/.exec("ab");', 'console.log(m);']) + '"'));
 block('a bare eval( still is', B('node "' + fpFile('ev.js', ['eval(process.argv[2]);']) + '"'));
 block('eval reached through the global object', B('node "' + fpFile('gev.js', ['globalThis.eval(process.argv[2]);']) + '"'));
 block('exec reached through the builtins', B('python "' + fpFile('bexec.py', ['import builtins', 'builtins.exec(open("x").read())']) + '"'));

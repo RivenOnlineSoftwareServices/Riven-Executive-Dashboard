@@ -34,8 +34,10 @@ The Glowming Summer Campaign 2026 for owners who work with their own Claude (bui
   its git remote, or a `.glowming-campaign` file at its root. Owners working the campaign launch in
   the synced folders or the campaign repository, which never count (Riaan, 2026-10-03).
 - Everywhere: in a TypeScript script, a type-only import (`import type … from "node:http"`) is not a
-  web request; a regex's `pattern.exec(` is not hidden code. A real import, every `eval(`, a bare or
-  global `exec(`, and decoding a payload (`atob(`, a Buffer from base64, `new Function(`) still are.
+  web request; in a JavaScript or TypeScript script, a member `.exec(` (a regex's `pattern.exec(`) is
+  not hidden code. A real import, every `eval(`, every `exec(` in a command or any other script
+  (Python's `b.exec(` included), and decoding a payload (`atob(`, a Buffer from base64 or hex,
+  `new Function(`) still are. A campaign repository's remote is read as git itself resolves it.
 
 A second, content-only check (a prompt hook) reads the text AFTER it is written and only warns:
 secrets, and health claims Meta, TikTok or the ARB could reject. It never blocks; the owners
