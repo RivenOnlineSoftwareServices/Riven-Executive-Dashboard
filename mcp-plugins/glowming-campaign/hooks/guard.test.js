@@ -515,6 +515,13 @@ launchedIn(devRepo, () => {
   shell('dev: a script that overwrites a caption in the advert folder it names', devB('node scripts/fix.js "' + advert + '"'), w('caption', 'hi'), 'undone',
     () => assert.ok(same('caption'), 'the caption is back'));
   shell('dev: a shell append of a weight-loss claim into anton.md', devB('echo "Lose weight fast" >> "' + files.anton + '"'), () => fs.appendFileSync(files.anton, 'Lose weight fast' + NL), STOPPED);
+  // A NEW text file a script writes is judged by what it says (Codex code r1): the shell claim rule
+  // steps aside here, so only post.js can see the claim.
+  const newNote = path.join(shared, 'work', 'anton', 'new.md');
+  shell('dev: a script writes a new note with a detox claim into work/anton', devB('node scripts/note.js "' + newNote + '"'), () => fs.writeFileSync(newNote, 'A detox week.' + NL), 'undone',
+    () => assert.ok(!fs.existsSync(newNote), 'the new note with the claim is removed'));
+  shell('dev: a script writes a plain new note into work/anton', devB('node scripts/note.js "' + newNote + '"'), () => fs.writeFileSync(newNote, 'Plain notes.' + NL), 'kept',
+    () => { assert.ok(fs.existsSync(newNote), 'the plain new note stays'); fs.rmSync(newNote, { force: true }); });
 });
 block('the same five-level chain from Anton\'s folder (the depth rule itself still holds)', B('bash "' + path.join(devScripts, 'step1.sh') + '"'));
 launchedIn(devTree, () => allow('dev: launched in a worktree inside the checkout', devB('curl -s http://localhost:3000/', devTree)));
@@ -675,6 +682,13 @@ as(null, null, DELL, () => {
   assert.notStrictEqual(decide(B('rm "' + files.png + '"'), id), null, 'campaign: rm a company file'); passed++;
   assert.notStrictEqual(decide(B('curl -o "' + files.png + '" https://example.com/x.png'), id), null, 'campaign: a web request writing into a company folder'); passed++;
   assert.notStrictEqual(decide(B('curl -s localhost', advert), id), null, 'campaign: a command run inside a company folder'); passed++;
+  // A neutral name that leads into a company folder is in it (Codex code r1).
+  const advertAlias = path.join(antonHome, 'adverts-link');
+  fs.symlinkSync(advert, advertAlias, 'junction');
+  assert.notStrictEqual(decide(B('curl -s localhost', advertAlias), id), null, 'campaign: a command run in a junction that leads into a company folder'); passed++;
+  assert.ok(post.run({ tool_name: 'Write', tool_input: { file_path: path.join(advertAlias, 'notes.txt'), content: 'token = abcdef123' }, tool_use_id: 'toolu_w' + (++callSeq), hook_event_name: 'PostToolUse', cwd: antonHome }, id).stdout.includes('password or secret'),
+    'campaign: a write through a junction into a company folder is warned about'); passed++;
+  fs.rmSync(path.join(advert, 'notes.txt'), { force: true });
   const touchPy = path.join(antonHome, 'touch-' + process.pid + '.py');
   fs.writeFileSync(touchPy, 'open(r"' + files.riaan + '", "w").write("x")' + NL);
   assert.strictEqual(decide(B('python "' + touchPy + '"'), id), null, 'campaign: a script naming a company file is let run'); passed++;
@@ -706,6 +720,17 @@ block('tamper: claude --bare', B('claude --bare -p "hello"'));
 block('tamper: claude --safe-mode', B('claude --safe-mode -p "hello"'));
 block('tamper: claude with other settings', B('claude -p "hi" --settings /tmp/s.json'));
 block('tamper: claude plugin uninstall', B('claude plugin uninstall glowming-campaign@riven-exec'));
+block('tamper: a quoted Windows path to claude.exe', { tool_name: 'PowerShell', tool_input: { command: '& "' + path.join('C:', 'Tools', 'claude.exe') + '" plugin disable glowming-campaign@riven-exec' } });
+block('tamper: a quoted POSIX path to claude', B('"/usr/local/bin/claude" plugin disable glowming-campaign@riven-exec'));
+block('tamper: process substitution inside a read', B('cat ~/.claude/settings.json <(cp /tmp/clean.json ~/.claude/settings.json)'));
+block('tamper: input redirection into a read', B('cat < ~/.claude/settings.json'));
+{
+  // A plain read of a script runs nothing, so the script's text is not judged as run (Codex code r1).
+  const ex = path.join(antonHome, 'example.py');
+  fs.writeFileSync(ex, 'print("claude plugin disable glowming-campaign@riven-exec")' + NL);
+  allow('tamper: one plain read of settings and a script that only mentions a plugin command', B('cat ~/.claude/settings.json "' + slash(ex) + '"'));
+  fs.rmSync(ex, { force: true });
+}
 allow('tamper: one plain read of the settings file', B('cat "' + slash(settingsFile) + '"'));
 block('tamper: a redirect over the settings file', B('cat /tmp/clean.json > "' + slash(settingsFile) + '"'));
 block('tamper: a read and a copy joined by a single &', B('cat ~/.claude/settings.json & cp /tmp/clean.json ~/.claude/settings.json'));
@@ -768,6 +793,47 @@ assert.strictEqual(guard.decide(B('ls /tmp')), null, 'no call id: a command touc
   assert.ok(!fs.existsSync(manifestPath), 'the expired copy is gone'); passed++;
   assert.strictEqual(fs.readFileSync(files.png, 'utf8'), 'changed by someone else', 'and nothing was put back from it'); passed++;
   reset();
+  // Its own call reporting after six hours does not put anything back either (Codex code r1).
+  decide(B('python a.py "' + advert + '"'));
+  const idL = lastId;
+  const lateManifest = path.join(os.tmpdir(), 'glowming-snap-' + idL + '.json');
+  const lm = JSON.parse(fs.readFileSync(lateManifest, 'utf8'));
+  lm.created = Date.now() - 7 * 60 * 60 * 1000;
+  fs.writeFileSync(lateManifest, JSON.stringify(lm));
+  fs.writeFileSync(files.png, 'changed later');
+  assert.strictEqual(post.verifyAll(idL), null, 'an expired copy is cleared when its own call reports late'); passed++;
+  assert.strictEqual(fs.readFileSync(files.png, 'utf8'), 'changed later', 'and nothing is put back from it'); passed++;
+  reset();
+}
+{
+  // A forbidden NEW file is kept before it is removed (Codex code r1).
+  decide(B('python make.py "' + rulesDir + '"'));
+  const stray = path.join(rulesDir, 'stray.md');
+  fs.writeFileSync(stray, 'the stray bytes');
+  assert.ok((verify() || '').includes(recoveryDir), 'the report names where the removed file is kept'); passed++;
+  assert.ok(!fs.existsSync(stray), 'the stray file is removed'); passed++;
+  const latest = fs.readdirSync(recoveryDir).map((d) => path.join(recoveryDir, d)).sort().pop();
+  const keptName = fs.readdirSync(latest).find((f) => f.endsWith('stray.md'));
+  assert.strictEqual(fs.readFileSync(path.join(latest, keptName), 'utf8'), 'the stray bytes', 'its bytes are kept'); passed++;
+  assert.strictEqual(JSON.parse(fs.readFileSync(path.join(latest, 'map.json'), 'utf8'))[keptName], stray, 'with the path it came from'); passed++;
+  reset();
+}
+{
+  // ... and when it cannot be kept, it is left, with its copy (Codex code r1).
+  const blocker2 = path.join(root, 'not-a-folder-2');
+  fs.writeFileSync(blocker2, 'x');
+  post.setRecoveryRootForTests(path.join(blocker2, 'sub'));
+  const stray = path.join(rulesDir, 'stray2.md');
+  try {
+    decide(B('python make.py "' + rulesDir + '"'));
+    const idN = lastId;
+    fs.writeFileSync(stray, 'x');
+    assert.ok((verify() || '').includes('NOT removed'), 'the report says the new file was not removed'); passed++;
+    assert.ok(fs.existsSync(stray), 'the new file is left'); passed++;
+    assert.ok(fs.existsSync(path.join(os.tmpdir(), 'glowming-snap-' + idN + '.json')), 'with its copy'); passed++;
+    post.setRecoveryRootForTests(recoveryDir);
+    post.verifyAll(idN);
+  } finally { post.setRecoveryRootForTests(recoveryDir); fs.rmSync(stray, { force: true }); reset(); }
 }
 {
   // The displaced version is kept before the earlier one is put back.
@@ -824,6 +890,7 @@ assert.strictEqual(guard.decide(B('ls /tmp')), null, 'no call id: a command touc
   assert.ok(post.run(ev({ file_path: scratch, content: 'card 4111 1111 1111 1111' }), full).stdout.includes('card or ID number'), 'a Luhn-valid card number'); passed++;
   assert.strictEqual(post.run(ev({ file_path: scratch, content: 'order 4111 1111 1111 1112' }), full).stdout, '', 'a number that fails Luhn'); passed++;
   assert.ok(post.run(ev({ file_path: scratch, content: 'password = hunter22' }), full).stdout.includes('password'), 'a password written out'); passed++;
+  assert.ok(post.run(ev({ file_path: scratch, content: 'password = abc' }), full).stdout.includes('password'), 'a short password written out (Codex code r1)'); passed++;
   assert.ok(post.run({ tool_name: 'Edit', tool_input: { file_path: scratch, old_string: 'a', new_string: 'helps you lose weight' }, tool_use_id: 'toolu_w' + (++callSeq), hook_event_name: 'PostToolUse' }, full).stdout.includes('claim'), 'a banned claim in an Edit'); passed++;
   assert.strictEqual(post.run(ev({ file_path: scratch, content: 'Plain words, R1 299, 12 orders.' }), full).stdout, '', 'plain text, prices and figures'); passed++;
   assert.strictEqual(post.run({ tool_name: 'Bash', tool_input: { command: 'echo ' + fakeKey }, tool_use_id: 'toolu_w' + (++callSeq), hook_event_name: 'PostToolUse' }, full).stdout, '', 'shell output is not a file-tool write'); passed++;

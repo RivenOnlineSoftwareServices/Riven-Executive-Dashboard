@@ -73,7 +73,8 @@ A shell command, or a script it runs (the same three-level read as today), is re
   Claude settings file NAME (`settings.json`, `settings.local.json`, `.claude.json`,
   `managed-settings.json`, matched as a word in the text, NOT resolved to a folder: G2, so `cd ~/.claude
   && cp x settings.json` and any `CLAUDE_CONFIG_DIR` location are caught) and the command is not a
-  **single simple read** (G1): one command, no `;`, `&`, `|`, newline, redirect (other than to
+  **single simple read** (G1): one command, no `;`, `&`, `|`, `<` (input redirect or process
+  substitution), newline, output redirect (other than to
   `/dev/null` / `nul`), `$(` or backtick, whose first word is one of `cat`, `type`, `head`, `tail`,
   `less`, `more`, `get-content`, `gc`, `wc`, `stat`, `ls`, `dir`, `test-path`, `get-item` (such a
   command runs no script, even when it reads one). A read through `grep`/`rg`/`jq` naming a settings file is refused (options such as

@@ -317,23 +317,28 @@ function checkWrite(tool, input, cwd, before) {
 const SETTINGS_ENV_KEYS = ['CLAUDE_CODE_USER_EMAIL', 'CLAUDE_CODE_ENTRYPOINT', 'CLAUDE_CONFIG_DIR', 'CLAUDE_CODE_SIMPLE', 'CLAUDE_CODE_SAFE_MODE'];
 const TAMPER_NAMES = /claude_code_user_email|claude_code_entrypoint|claude_config_dir|claude_code_simple|claude_code_safe_mode|disableallhooks|enabledplugins/i;
 const CLAUDE_LAUNCH_FLAGS = /\bclaude(\.exe)?\b[^\n;&|]*?\s--(settings|setting-sources|plugin-dir|bare|safe-mode)\b/i;
-const PLUGIN_OFF = /\bclaude(\.exe)?\s+plugins?\s+(disable|uninstall|remove|rm)\b/i;
+// The executable may be quoted ("C:/Tools/claude.exe" plugin disable ...), Codex code r1.
+const PLUGIN_OFF = /\bclaude(\.exe)?["']?\s+plugins?\s+(disable|uninstall|remove|rm)\b/i;
 // A settings file NAME anywhere in the command text (not resolved: `cd ~/.claude && cp x settings.json`).
 const SETTINGS_NAME = /(^|[^\w.-])(settings(\.local)?\.json|\.claude\.json|managed-settings\.json)(?![\w.-])/i;
 // A folder called .claude named in the text (a reset of the settings folder).
 const CLAUDE_DIR = /(^|[\\/\s"'=])\.claude([\\/\s"']|$)/i;
 const SIMPLE_READ = /^\s*(cat|type|head|tail|less|more|get-content|gc|wc|stat|ls|dir|test-path|get-item)(\s|$)/i;
 
-/** One read command and nothing else: no chain, pipe, background, newline, redirect, substitution. */
+/**
+ * One read command and nothing else: no chain, pipe, background, newline, output or input redirect,
+ * process substitution (`<(...)`) or command substitution.
+ */
 function singleSimpleRead(cmd) {
   const c = cmd.replace(/(&|\d)?>{1,2}\s*(\/dev\/null|nul)\b/gi, '');
-  if (/[;&|\n\r`]|\$\(/.test(c) || REDIRECT.test(c)) return false;
+  if (/[;&|<\n\r`]|\$\(/.test(c) || REDIRECT.test(c)) return false;
   return SIMPLE_READ.test(c);
 }
 
 /** Shell tamper check. Null = fine, else the reason. `full` adds the identity and setting names. */
 function shellTamper(cmd, scriptText, full) {
-  const all = cmd + scriptText;
+  // A single simple read runs no script, even one it reads: only its own text is judged (Codex code r1).
+  const all = singleSimpleRead(cmd) ? cmd : cmd + scriptText;
   if (PLUGIN_OFF.test(all) || CLAUDE_LAUNCH_FLAGS.test(all)) {
     return 'Starting Claude without its settings or plugins, or switching a plugin off, is not allowed from this Claude. Ask Riaan\'s side.';
   }
@@ -513,7 +518,9 @@ function checkBash(input, cwd, callId, mode) {
   // Paths that only RESOLVE into a company folder (a symlink, "../..") count as naming it (Codex r9).
   const named = foldersNamed(full, cwd, false);
   const nfull = norm(full) + (named.length ? NL + named.map(norm).join(NL) : '');
-  const inFolder = isProtected(norm(cwd || ''));
+  // The shell's folder RESOLVED through links (a neutral junction leading into a company folder is in
+  // it), the same resolver every file check uses (Codex code r1).
+  const inFolder = isProtected(norm(cwd || '')) || (!!cwd && isProtected(norm(realLocation(cwd, process.cwd()))));
   // The tamper list, before scope (FULL: all of it; CAMPAIGN: settings files and plugin switches).
   const tamper = shellTamper(cmd, scripts.text, mode !== 'campaign');
   if (tamper) return tamper;
@@ -568,7 +575,7 @@ function isReadOnly(cmd) {
 /** Every company folder a command or its scripts name (plus the folder it runs in). */
 function foldersNamed(full, cwd, inFolder) {
   const dirs = new Set();
-  if (inFolder) dirs.add(path.resolve(cwd));
+  if (inFolder) dirs.add(realLocation(cwd, process.cwd()));
   // Candidates: every piece between quotes and line breaks, and every whitespace token. A path
   // inside a quoted one-liner (python -c "open(r'...')") is its own piece once split on quotes.
   const pieces = new Set();
@@ -671,8 +678,8 @@ function isTextFile(np) {
 }
 
 /** May a NEW file appear at p? Null = yes, else the reason (the same rules as the file tools). */
-function checkNewFile(p, cwd) {
-  return checkWrite('Write', { file_path: p, content: '' }, cwd, { exists: false, current: null });
+function checkNewFile(p, cwd, content) {
+  return checkWrite('Write', { file_path: p, content: typeof content === 'string' ? content : '' }, cwd, { exists: false, current: null });
 }
 
 // Servers whose actions change nothing in Glowming's own systems (owner ruling: Anton renders on Magnific).
@@ -750,7 +757,7 @@ function setDevRootsForTests(roots) { testRoots = roots; }
 /** Tests only: stand in for this machine's OS account and name ({ user, host }, lower-case); false = unreadable; null = the real one. */
 function setMachineForTests(m) { testMachine = m; }
 
-module.exports = { decide, identity, recordIdentity, checkWrite, checkNewFile, isTextFile, isProtected, norm, sha1, walkFiles, snapId, CALENDAR, BANNED_CLAIMS, setDevRootsForTests, setMachineForTests };
+module.exports = { decide, identity, recordIdentity, checkWrite, checkNewFile, isTextFile, isProtected, realLocation, norm, sha1, walkFiles, snapId, CALENDAR, BANNED_CLAIMS, setDevRootsForTests, setMachineForTests };
 
 if (require.main === module) {
   // Who is working is read BEFORE the tool call is parsed, so Riaan never meets even the

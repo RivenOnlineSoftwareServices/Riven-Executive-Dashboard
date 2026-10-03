@@ -63,7 +63,10 @@ function verifyAll(callId) {
     let manifest;
     try { manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8')); } catch (e) { manifest = null; }
     const stale = !manifest || Date.now() - (manifest.created || 0) > STALE_MS;
-    if (f === mine && manifest) {
+    // Expiry first: an expired copy is never put back, even when its own call reports at last
+    // (Codex code r1).
+    if (stale) { removeSnapshot(manifestPath, manifest); continue; }
+    if (f === mine) {
       const recovery = { dir: null, n: 0, map: {}, callId: guard.snapId(callId) };
       let keep = false;
       for (const dir of manifest.dirs) if (checkFolder(dir, manifest.cwd, problems, recovery)) keep = true;
@@ -72,8 +75,6 @@ function verifyAll(callId) {
         problems.push('The versions that were displaced are kept in ' + recovery.dir + '.');
       }
       if (keep) continue; // a displaced version could not be kept: leave this copy for a person
-      removeSnapshot(manifestPath, manifest);
-    } else if (stale) {
       removeSnapshot(manifestPath, manifest);
     }
   }
@@ -131,7 +132,11 @@ function checkFolder(dir, cwd, problems, recovery) {
   try { nowFiles = guard.walkFiles(dir.dir, []); } catch (e) { nowFiles = []; }
   for (const p of nowFiles) {
     if (before.has(p)) continue;
-    const reason = guard.checkNewFile(p, cwd);
+    // A new text file is judged with what it actually says (a banned claim written by a script in a
+    // developer's checkout, where the shell claim rule steps aside: Codex code r1).
+    let text = '';
+    if (guard.isTextFile(guard.norm(p))) { try { text = fs.readFileSync(p, 'utf8'); } catch (e) { text = ''; } }
+    const reason = guard.checkNewFile(p, cwd, text);
     if (reason) {
       if (!keepDisplaced(p, recovery)) {
         failed = true;
@@ -172,7 +177,7 @@ function judgeChange(entry, nowBuf, cwd) {
 
 // ---- The warning --------------------------------------------------------------------------------
 const KEY_SHAPES = /-----BEGIN [A-Z ]*PRIVATE KEY-----|\b(?:sk-(?:ant-|proj-)?[A-Za-z0-9_-]{20,}|sk_live_[A-Za-z0-9]{16,}|rk_live_[A-Za-z0-9]{16,}|ghp_[A-Za-z0-9]{30,}|github_pat_[A-Za-z0-9_]{30,}|xox[abpr]-[A-Za-z0-9-]{10,}|AKIA[0-9A-Z]{16}|AIza[0-9A-Za-z_-]{35}|shpat_[a-fA-F0-9]{32}|EAA[A-Za-z0-9]{60,})/;
-const ASSIGNED = /\b(?:password|passwd|pwd|secret|api[ _-]?key|access[ _-]?token|auth[ _-]?token|token)\b\s*[:=]\s*["']?[^\s"']{6,}/i;
+const ASSIGNED = /\b(?:password|passwd|pwd|secret|api[ _-]?key|access[ _-]?token|auth[ _-]?token|token)\b\s*[:=]\s*["']?[^\s"']+/i;
 const DIGIT_RUN = /(?<!\d)(?:\d[ -]?){12,18}\d(?!\d)/g;
 
 function luhn(digits) {
@@ -213,7 +218,8 @@ function warningFor(event, mode) {
   if (!/^(Write|Edit|MultiEdit|NotebookEdit)$/.test(tool)) return null;
   const input = event.tool_input || {};
   const target = input.file_path || input.notebook_path || '';
-  if (mode === 'campaign' && !guard.isProtected(guard.norm(path.resolve(event.cwd || process.cwd(), String(target))))) return null;
+  // Resolved through links and '~', the same way the file checks resolve a target (Codex code r1).
+  if (mode === 'campaign' && !guard.isProtected(guard.norm(guard.realLocation(String(target), event.cwd || process.cwd())))) return null;
   const found = findings(newText(tool, input));
   if (!found.length) return null;
   const name = path.basename(String(target)) || 'the file';
