@@ -8,6 +8,25 @@ The Glowming Summer Campaign 2026 for owners who work with their own Claude (bui
 | `zac` | Glowming designs: new adverts and posts, feed / story / square sizes, motion videos through Magnific, and brand critique. Renders are saved as new files and logged. |
 | `heyu` | Glowming wording: captions, headlines, advert text, the compliance check, and advice from advert results. |
 
+**Who the guard is for (0.2.0, operator ruling 2026-10-03):** Anton, Etienne and Louis, never Riaan.
+Design: `docs/glowming-campaign-guard-identity.md` at the repo root. `guard.js` reads who is working
+before anything else:
+
+- the signed-in address the desktop app sets for its Code tab and for Cowork
+  (`CLAUDE_CODE_USER_EMAIL`, with `CLAUDE_CODE_ENTRYPOINT` `claude-desktop` / `local-agent`):
+  Riaan's address -> **off** (nothing runs, nothing is copied, no warning); any other address -> **full**;
+- else Riaan's own account on his own machine (`riaan` on ZENBOOKDUO-RV26, `riaanventer` on the
+  Air) -> **off**;
+- else an address from another launcher: Riaan's -> off, any other -> full;
+- else (no identity) -> **campaign**: only calls that touch the company folders are judged.
+
+A short, closed tamper list (not claimed complete) refuses switching the guard off in passing:
+`claude --bare / --safe-mode / --settings / --plugin-dir`, `claude plugin disable`, resetting a
+`.claude` folder, any shell command naming a Claude settings file other than one plain read, the
+identity and safe-mode variables (full only), and file-tool settings edits that set
+`disableAllHooks`, switch this plugin off or change those variables. After installing, each machine
+records its verdict in `<temp>/glowming-guard-identity.json` (mode, rule, address domain only).
+
 **Guard (two parts):**
 
 - `hooks/guard.js` (before each tool call) checks every file write and connector call against an
@@ -43,13 +62,24 @@ The Glowming Summer Campaign 2026 for owners who work with their own Claude (bui
   `new Function(`); a TypeScript `import type … from "node:http"` counts as a web request as on main
   (an exemption for it was tried and dropped: a string can hold the same text).
 
-A second, content-only check (a prompt hook) reads the text AFTER it is written and only warns:
-secrets, and health claims Meta, TikTok or the ARB could reject. It never blocks; the owners
-decide (Riaan, 2026-10-02: "Your job is to warn, not refuse"). Tests: `node
+A content-only check in `post.js` reads the text a file tool just wrote and only warns (a message to
+the person and a note to Claude, exit 0): key and token shapes, private keys, a password written out,
+a Luhn-valid card or ID number, banned claims. It never blocks; the owners decide (Riaan,
+2026-10-02: "Your job is to warn, not refuse"). It replaced the earlier LLM prompt hook, which could
+not tell who was working and so ran for Riaan too; it is narrower (no bank account numbers, no "could
+Meta or the ARB reject this" judgment). `post.js` also runs after a FAILED call, and before it puts a
+file back or removes one it keeps the displaced version in `<home>/.glowming-guard-recovery/`. Only
+the copy of the call that took it is ever checked; a copy older than six hours is deleted without
+putting anything back. Tests: `node
 hooks/guard.test.js`; negative controls (each rule removed must turn a named case red): `node
 hooks/guard.controls.mjs`.
 
-**Known limits:** a script that writes a company file it never names (a path built at run time) in a
+**Known limits:** who is working rests on what the app tells the hook (verified in Riaan's desktop
+Code tab on the Zenbook; Cowork, the Air and Anton's DELL are owed a live check of the identity file);
+a session with no identity (a cloud session, a new machine) gets campaign mode, which can refuse
+Riaan's own company-file edits there and does not judge a send or delete by ID only; two people
+sharing one OS account with no app-set address; the tamper list is closed, not complete; the guard's
+own plugin folder is not protected (parked); a script that writes a company file it never names (a path built at run time) in a
 folder the command does not name either; in a developer's checkout, nothing stops a web request
 (adverts, the shop, email), and a company file can be reached unseen through a script more than three
 levels down or over 500 KB, or through hidden code, when the command names no company folder (that

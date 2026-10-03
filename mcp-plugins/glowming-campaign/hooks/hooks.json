@@ -1,5 +1,5 @@
 {
-  "description": "Guard for the Glowming campaign files: guard.js checks every write, shell command and connector call against an allow-list using the files on disk; calendar-links.js puts the posting calendar back if a save lost a tracking link; a content check reads the text AFTER it is written and only warns, it never blocks (Riaan, 2026-10-02: warn, never refuse).",
+  "description": "Guard for the Glowming campaign files, for Anton, Etienne and Louis, never for Riaan (operator ruling 2026-10-03; design note docs/glowming-campaign-guard-identity.md): guard.js decides who is working and, unless it is Riaan, checks every write, shell command and connector call against an allow-list using the files on disk; post.js checks what a shell command did (also when it failed), puts back what the rules forbid (keeping the displaced version), and warns, never blocks, when a file tool wrote a key, password, card or ID number or a banned claim (Riaan, 2026-10-02: warn, never refuse).",
   "hooks": {
     "PreToolUse": [
       {
@@ -23,15 +23,16 @@
             "timeout": 15
           }
         ]
-      },
+      }
+    ],
+    "PostToolUseFailure": [
       {
-        "matcher": "Write|Edit|MultiEdit|NotebookEdit",
+        "matcher": ".*",
         "hooks": [
           {
-            "type": "prompt",
-            "continueOnBlock": true,
-            "timeout": 30,
-            "prompt": "Below is the JSON input of a file-writing tool call that has ALREADY happened. You cannot stop or undo it. Your answer is only a warning that Claude passes on to the person, who decides what to do. Judge ONLY the new text written: the fields tool_input.content, tool_input.new_string, tool_input.edits[].new_string and tool_input.new_source. Ignore every other field.\n\n$ARGUMENTS\n\nWARN (ok false) only if the new text contains: a password, API key, token, card or bank number, or ID number; or customer-facing wording with a health, medical, weight-loss, detox, cure, appetite or craving claim that Meta, TikTok or the South African advertising rules (ARB) could reject. Prices, costs, budgets, margins, figures and file paths are never a reason to warn. Everything else: ok true. If you warn, give one plain sentence naming the line and the risk, so Claude can tell the person and they can decide."
+            "type": "command",
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/hooks/post.js\"",
+            "timeout": 15
           }
         ]
       }
