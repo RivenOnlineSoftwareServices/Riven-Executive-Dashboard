@@ -1,7 +1,7 @@
 # Design note: the campaign guard is for Anton, Etienne and Louis, never for Riaan
 
-Rule #41 (a guard is a risk surface). Plugin `glowming-campaign`, 2026-10-03. Round 6: Codex design
-rounds 1 (C1-C7), 2 (D1-D7), 3 (E1-E6), 4 (F1-F6) and 5 (G1-G5) answered inline.
+Rule #41 (a guard is a risk surface). Plugin `glowming-campaign`, 2026-10-03. Round 7: Codex design
+rounds 1-6 (C, D, E, F, G, H) answered inline.
 
 ## Why
 
@@ -55,11 +55,18 @@ never for code repos (keep #19's code-repo step-aside)", and says an unknown ide
 machines must not block him; Riaan's provisioned machines are never unknown (1.1 or 1.2). An
 operator-provisioned mapping for other surfaces (cloud, a new machine) is a follow-up, reported.
 
-## Tamper rule (C3, D3, E3, E4)
+## Tamper rule (C3, D3, E3, E4, H1, H2)
+
+**The list below is CLOSED and is not claimed complete** (C3). Six review rounds each found one more
+ordinary way to start Claude without hooks or change its settings; each found form is now on the
+list. Any form not on it (a new CLI flag, a settings key not named here, an installer reset, a
+runtime-built name) is in the accepted accidental-misuse limit, reported, and added when seen in use.
 
 A shell command, or a script it runs (the same three-level read as today), is refused:
 - full and campaign mode: if its text runs `claude plugin disable|uninstall|remove` or passes
-  `--settings` / `--setting-sources` / `--plugin-dir` to a `claude` launch; or if its text contains a
+  `--settings`, `--setting-sources`, `--plugin-dir`, `--bare` or `--safe-mode` to a `claude` launch
+  (H1); or if it deletes, moves or renames (the existing `REMOVE_SHELL` list) and its text names a
+  folder called `.claude` (H2: a reset of the settings folder); or if its text contains a
   Claude settings file NAME (`settings.json`, `settings.local.json`, `.claude.json`,
   `managed-settings.json`, matched as a word in the text, NOT resolved to a folder: G2, so `cd ~/.claude
   && cp x settings.json` and any `CLAUDE_CONFIG_DIR` location are caught) and the command is not a
@@ -69,7 +76,8 @@ A shell command, or a script it runs (the same three-level read as today), is re
   scripts run. A read through `grep`/`rg`/`jq` naming a settings file is refused (options such as
   `rg --pre` run programs); Anton never needs it.
 - full mode only: if its text names `CLAUDE_CODE_USER_EMAIL`, `CLAUDE_CODE_ENTRYPOINT`,
-  `CLAUDE_CONFIG_DIR`, `disableAllHooks` or `enabledPlugins` (campaign mode leaves these out, so an
+  `CLAUDE_CONFIG_DIR`, `CLAUDE_CODE_SIMPLE`, `CLAUDE_CODE_SAFE_MODE`, `disableAllHooks` or
+  `enabledPlugins` (campaign mode leaves these out, so an
   unidentified Riaan can still mention them).
 
 Full and campaign mode, a file-tool write to a Claude settings file (the target path, resolved:
@@ -77,8 +85,9 @@ Full and campaign mode, a file-tool write to a Claude settings file (the target 
 folder, or `.claude.json` / `managed-settings.json` anywhere; a project's own or VS Code's
 `settings.json` elsewhere is not one) is judged on the **parsed** current and
 resulting JSON (E3): refused if `disableAllHooks` becomes true, any `enabledPlugins` key starting
-`glowming-campaign@` is set false or removed, or `env.CLAUDE_CODE_USER_EMAIL`,
-`env.CLAUDE_CODE_ENTRYPOINT` or `env.CLAUDE_CONFIG_DIR` is added, changed or removed. If the resulting
+`glowming-campaign@` is set false or removed, or any of `env.CLAUDE_CODE_USER_EMAIL`,
+`env.CLAUDE_CODE_ENTRYPOINT`, `env.CLAUDE_CONFIG_DIR`, `env.CLAUDE_CODE_SIMPLE`,
+`env.CLAUDE_CODE_SAFE_MODE` is added, changed or removed. If the resulting
 text cannot be worked out or does not parse as JSON, the write is refused (a settings file that does
 not parse is not a settings file Claude Code reads either, but the edit cannot be checked). Other
 files (a document that mentions the variable) are not affected.
