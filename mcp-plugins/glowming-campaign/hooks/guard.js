@@ -27,10 +27,21 @@
  * Everything else inside the company folders is read-only. Files outside them
  * (temporary working files) are allowed.
  *
+ * A developer's checkout (devCheckout: the session was LAUNCHED strictly inside the owner's code
+ * folder, <home drive>\repos, by a path with no link in it that neither says campaign nor names a
+ * company folder, and the shell is still inside that launch folder): the blanket
+ * shell rules (no web requests, no hidden code, no deep or very large script chains, no claim text
+ * in shell writes) step aside there; everything that protects the company files still applies.
+ *
  * Known limits (stated in the README): a script that builds company paths at run
- * time with no folder name in its text; a Python module run with -m; anything if
- * Cowork does not run plugin hooks at all (the skills' own rules then apply, and
- * the campaign skill runs a canary to find out).
+ * time with no folder name in its text; a Python module run with -m; in a
+ * developer's checkout, nothing stops a web request (adverts, the shop, email), and a
+ * company file can be reached unseen through a script more than three levels down or
+ * over 500 KB, or through hidden code, when the command names no company folder;
+ * a campaign checkout under the code folder whose path does not say campaign counts as
+ * a developer's checkout; anything if Cowork does not run
+ * plugin hooks at all (the skills' own rules then apply, and the campaign skill runs
+ * a canary to find out).
  */
 'use strict';
 
@@ -247,8 +258,13 @@ const SHELL_SCRIPT = /\.(sh|bash|ps1|psm1|bat|cmd)$/i;
 // Shell redirection into a file: > >> 2> 2>> &> &>>, but not 2>&1. Judged on the COMMAND only
 // (scripts contain arrows and comparisons that are not redirects).
 const REDIRECT = /(^|[^=\-<>])(&|\d)?>{1,2}(?![&>=])/;
-// Code that hides what it runs: blocked everywhere, Anton never needs it.
-const HIDDEN_CODE = /-e(nc|ncodedcommand)?\s+[a-z0-9+/=]{16,}|-encodedcommand|frombase64string|base64\s+(-d|--decode)|b64decode|\beval\(|\bexec\(|\biex\b|invoke-expression|(^|[\s;&|])(python3?|py|node|ruby|perl)\s+-(\s|$)|(^|[\s;&|])(python3?|py|node)\s*<|\b(bash|sh|zsh)\s+-s\b|-command\s+-(\s|$)|(^|[\s;&|(])(bash|sh|zsh|dash|ksh|pwsh|powershell|cmd)(\.exe)?\s*<|\|\s*(bash|sh|zsh|dash|ksh|pwsh|powershell|cmd|python3?|py|node|ruby|perl|php)(\.exe)?(\s|$)/i;
+// Code that hides what it runs: blocked everywhere outside a developer's checkout, Anton never needs
+// it. Every `eval(` and every `exec(` counts, bare or as a member, a regex's `pattern.exec(` included:
+// a file's name says nothing about what runs it (`python x.js` runs Python, where `b.exec(` runs
+// code), so no member call is exempt (Codex and Claude review, 2026-10-03; the code repositories that
+// needed regex .exec( are developer's checkouts). Decoding a payload (atob, a Buffer from base64 or
+// hex, a new Function) counts too, whatever then runs it.
+const HIDDEN_CODE = /-e(nc|ncodedcommand)?\s+[a-z0-9+/=]{16,}|-encodedcommand|frombase64string|base64\s+(-d|--decode)|b64decode|\beval\s*\(|\bexec\s*\(|\batob\(|\bfrom\s*\([^)]*,\s*['"](?:base64(?:url)?|hex)['"]|\bnew\s+Function\s*\(|\biex\b|invoke-expression|(^|[\s;&|])(python3?|py|node|ruby|perl)\s+-(\s|$)|(^|[\s;&|])(python3?|py|node)\s*<|\b(bash|sh|zsh)\s+-s\b|-command\s+-(\s|$)|(^|[\s;&|(])(bash|sh|zsh|dash|ksh|pwsh|powershell|cmd)(\.exe)?\s*<|\|\s*(bash|sh|zsh|dash|ksh|pwsh|powershell|cmd|python3?|py|node|ruby|perl|php)(\.exe)?(\s|$)/i;
 const SCRIPT_FILE = /(?:"([^"]+\.(?:py|js|mjs|cjs|ts|ps1|psm1|sh|bash|bat|cmd|pl|rb|php))"|'([^']+\.(?:py|js|mjs|cjs|ts|ps1|psm1|sh|bash|bat|cmd|pl|rb|php))'|([^\s'"]+\.(?:py|js|mjs|cjs|ts|ps1|psm1|sh|bash|bat|cmd|pl|rb|php)))(?=$|[\s;&|)\],}])/gi;
 
 /**
@@ -288,14 +304,74 @@ function scriptsRun(cmd, cwd) {
   return { text, shellText, unreadable, tooDeep };
 }
 
+// Campaign work under the code folder is known by its path (the campaign repository, and the worktrees
+// made inside it). Only the path: it is the one thing a session cannot change (see devCheckout).
+const CAMPAIGN_REPO = /campaign/i;
+
+/**
+ * The folder that holds the owner's code repositories: `<home drive>\repos` (C:\repos on the owner's
+ * machine), fixed in this file. Nothing a session can write moves it: not an environment variable
+ * (`setx` would carry one into the next session), not a file. Anton launches in the synced folders,
+ * never there. It must be a real folder, never a link or junction (a junction made during a session
+ * at an absent C:\repos would otherwise lead it anywhere), and it is compared as written, never
+ * through links. `testRoots` is set only by the tests, in their own process.
+ */
+let testRoots = null;
+function devRoots() {
+  return (testRoots || [path.join(path.parse(os.homedir()).root, 'repos')]).filter((r) => {
+    try { const st = fs.lstatSync(r); return st.isDirectory() && !st.isSymbolicLink(); } catch (e) { return false; }
+  }).map((r) => norm(path.resolve(r)).replace(/\/?$/, '/'));
+}
+
+/** Whether `dir` is inside one of the dev roots (never the dev root itself). */
+function underDevRoot(dir) {
+  const d = norm(dir).replace(/\/?$/, '/');
+  return devRoots().some((r) => d.startsWith(r) && d !== r);
+}
+
+/**
+ * Whether the session works in a developer's checkout. Eligibility is bounded by the SPELLING of the
+ * folder the session was launched in (CLAUDE_PROJECT_DIR, set by Claude Code and fixed for the
+ * session; the hook's `cwd` follows every `cd`): it must be strictly inside the owner's code folder
+ * (devRoots, compared as written); then, on every call, the shell's folder RESOLVED through links must
+ * be inside that spelling and must neither say campaign nor be a company folder. A launch spelling
+ * that says campaign, or lies outside the code folder, can never become eligible, whatever the session
+ * changes on disk; a neutral spelling under the code folder is code by design (Codex rung 2: replacing
+ * a junction at such a spelling with a real folder makes it eligible, inside the accepted cost below). Earlier versions also read git remotes, a marker file, a worktree's .git link and a record
+ * written at session start: each was something a session could rewrite to turn the rules off
+ * (Codex and Claude review, 2026-10-03), so none is read. The cost, stated in the README: a campaign
+ * checkout under the code folder whose path does not say campaign counts as code.
+ *
+ * There the blanket shell rules below step aside: a code repository legitimately starts servers,
+ * makes local requests, and runs test and build scripts that use eval/exec and chain many files
+ * (measured 2026-10-03: they refused routine gates in a ROSS Suite session). The company files stay
+ * protected everywhere: file tools, connectors, deletes and the copy that post.js checks do not
+ * depend on this. Anton launches in the synced company folders, never under the code folder
+ * (Riaan, 2026-10-03: "make it work like we need it to without relying on me").
+ */
+function devCheckout(cwd) {
+  const launched = process.env.CLAUDE_PROJECT_DIR;
+  if (!launched) return false; // without the launch folder, nothing shows the session is a code repository's
+  const written = path.resolve(launched);
+  if (!underDevRoot(written)) return false;
+  // The shell's folder RESOLVED, inside the launch folder AS WRITTEN: a link anywhere on the way (in
+  // the launch path, or one the shell went through) leaves it outside. A campaign or company name on
+  // the launch path is on the shell's path too.
+  const where = realLocation(cwd || launched, process.cwd());
+  if (isProtected(norm(where)) || CAMPAIGN_REPO.test(norm(where))) return false;
+  return (norm(where) + '/').startsWith(norm(written).replace(/\/?$/, '/'));
+}
+
 /** Decide one shell command, including the scripts it runs. */
 function checkBash(input, cwd, callId) {
   const cmd = String(input.command || '');
-  if (HIDDEN_CODE.test(cmd)) {
+  // In a developer's checkout only the company-folder protection applies (devCheckout).
+  const dev = devCheckout(cwd);
+  if (!dev && HIDDEN_CODE.test(cmd)) {
     return 'Commands that hide or stream the code they run (encoded, eval/exec, stdin) are not allowed from this Claude. Write the script to a file first so it can be checked.';
   }
   const scripts = scriptsRun(cmd, cwd);
-  if (scripts.tooDeep > 0) {
+  if (!dev && scripts.tooDeep > 0) {
     return 'That chain of scripts is too deep or too large to check (more than three levels, or a script over 500 KB). Run the script directly.';
   }
   const full = cmd + scripts.text;
@@ -305,7 +381,7 @@ function checkBash(input, cwd, callId) {
   const inFolder = isProtected(norm(cwd || ''));
   // Anywhere, not only near company folders: hidden code could make a web request or reach a
   // company file the guard never sees (Codex round 7).
-  if (HIDDEN_CODE.test(scripts.text)) {
+  if (!dev && HIDDEN_CODE.test(scripts.text)) {
     return 'That script hides or streams the code it runs (eval/exec/encoded/stdin), so it cannot be checked. Write the code itself into the script.';
   }
   if ((isProtected(nfull) || inFolder) && REMOVE_SHELL.test(full)) {
@@ -316,10 +392,12 @@ function checkBash(input, cwd, callId) {
   const cmdNoDiscard = cmd.replace(discard, '');
   const shellNoDiscard = scripts.shellText.replace(discard, '');
   const redirects = REDIRECT.test(cmdNoDiscard) || REDIRECT.test(shellNoDiscard);
-  if (NET_CALL.test(full)) {
+  if (!dev && NET_CALL.test(full)) {
     return 'Web requests from the shell or a script are not allowed from this Claude (adverts, the shop and email are never changed this way). Use a connector to read, or ask Riaan\'s side.';
   }
-  if ((redirects || CODE_WRITE.test(full)) && BANNED_CLAIMS.test(full)) {
+  // In a developer's checkout, claims are judged where they land: a company file (checkWrite, and
+  // post.js after a shell command), not in code and fixtures that name the banned words.
+  if (!dev && (redirects || CODE_WRITE.test(full)) && BANNED_CLAIMS.test(full)) {
     return 'That text contains a weight-loss, slimming, detox, appetite, craving, cure or "clinically proven" claim, which is never allowed. Remove it.';
   }
   if (inFolder && scripts.unreadable > 0) {
@@ -503,7 +581,10 @@ function decide(event) {
   return null;
 }
 
-module.exports = { decide, checkWrite, checkNewFile, isTextFile, norm, sha1, walkFiles, snapId, CALENDAR, BANNED_CLAIMS };
+/** Tests only (their own process): stand in for the owner's code folder. */
+function setDevRootsForTests(roots) { testRoots = roots; }
+
+module.exports = { decide, checkWrite, checkNewFile, isTextFile, norm, sha1, walkFiles, snapId, CALENDAR, BANNED_CLAIMS, setDevRootsForTests };
 
 if (require.main === module) {
   let buf = '';

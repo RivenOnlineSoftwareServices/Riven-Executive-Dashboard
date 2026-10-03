@@ -92,6 +92,10 @@ const LINK2 = 'https://glowming.co.za/pages/journey?utm_source=meta&utm_content=
 
 // ---- a folder laid out like Anton's synced folders --------------------------------------------
 const root = fs.mkdtempSync(path.join(os.tmpdir(), 'gc-guard-'));
+// Removed however the run ends, a failed assertion included (every negative control ends one early).
+process.on('exit', () => {
+  try { process.chdir(os.tmpdir()); fs.rmSync(root, { recursive: true, force: true }); } catch (e) { /* best effort */ }
+});
 const base = path.join(root, 'Riven Online Software Services');
 const shared = path.join(base, 'ROSS - Documents', '_Riven-Claude', 'Glowming Summer Campaign');
 const camp = path.join(base, 'Glowming-SA Operations - Documents', 'SA Operations', 'Marketing', '2026 Summer Campaign');
@@ -99,6 +103,13 @@ const advert = path.join(camp, '01 Ready to post', 'Step 2 - Already know Glowmi
 const plans = path.join(camp, '05 Plans and approvals');
 const rulesDir = path.join(camp, '06 Competition rules');
 for (const d of [path.join(shared, 'work', 'anton'), advert, plans, rulesDir]) fs.mkdirSync(d, { recursive: true });
+// Every case runs as Anton does: launched from, and standing in, a folder that is not a git checkout.
+// The tests may themselves run from a Claude session launched inside a code repository, which the
+// guard would treat as a developer's checkout (section 5), so that is cleared here.
+const antonHome = path.join(root, 'Users', 'anton');
+fs.mkdirSync(antonHome, { recursive: true });
+process.chdir(antonHome);
+delete process.env.CLAUDE_PROJECT_DIR;
 const caption = [
   'A5 Journey starts', '=================', '', 'CAPTION (post text):', 'Old post text.', '',
   'Headline:   Old headline', 'Short line: Old short', 'Button:     Sign up', '',
@@ -142,6 +153,9 @@ const block = (why, ev) => { assert.notStrictEqual(decide(ev), null, 'should BLO
 const W = (p, content) => ({ tool_name: 'Write', tool_input: { file_path: p, content } });
 const E = (p, o, n) => ({ tool_name: 'Edit', tool_input: { file_path: p, old_string: o, new_string: n } });
 const B = (command, cwd) => ({ tool_name: 'Bash', tool_input: { command }, cwd });
+// Sections 1-4 and 6 mean nothing if this machine's temp folder sits inside a checkout the guard
+// would trust: prove the blanket rules hold where Anton stands before anything else.
+block('start-up: a web request from Anton\'s folder is refused', B('curl -s https://example.com/'));
 
 /**
  * A shell command the guard may let run: decide() first; if allowed, do what the command
@@ -356,7 +370,9 @@ shell('a calendar save that adds a plain cell (benign)', B('python cal.py "' + f
 // Codex round 9.
 {
   // A folder link (junction) whose own name says nothing about the company folders.
-  const link = path.join(os.tmpdir(), 'gc-link-' + process.pid);
+  // Inside this run's own folder: a fixed name in the shared temp folder outlived an aborted run and
+  // was picked up again when Windows reused the process id (measured 2026-10-03).
+  const link = path.join(root, 'gc-link');
   try { fs.symlinkSync(shared, link, 'junction'); } catch (e) { /* no link support: skip */ }
   if (fs.existsSync(link)) {
     shell('a write through a folder link into the shared folder', B('python -c "open(\'linked/riaan.md\',\'w\').write(\'x\')"'.replace('linked', link.split(path.sep).join('/'))), w('riaan', 'changed'), STOPPED);
@@ -415,9 +431,167 @@ allow('Magnific upload of a source photo', { tool_name: 'mcp__magnific__creation
 block('a Magnific prompt with a detox claim', { tool_name: 'mcp__magnific__images_generate', tool_input: { prompt: 'detox drink on a beach' } });
 block('a Magnific prompt with an appetite claim', { tool_name: 'mcp__magnific__images_generate', tool_input: { prompt: 'drink that reduces your appetite' } });
 
+// ---- 5. Developer's checkouts (2026-10-03) ----------------------------------------------------------
+// A code repository on an owner's machine starts servers, makes local requests and runs build scripts:
+// the blanket shell rules step aside there. Everything that protects the company files still applies.
+// Decided ONLY from what a session cannot change: the folder it was LAUNCHED in (CLAUDE_PROJECT_DIR),
+// strictly inside the owner's code folder (C:\repos on the owner's machine; this folder here), with no
+// link in its path and no campaign or company name in it, and the shell still inside that folder.
+const repos = path.join(root, 'repos');
+guard.setDevRootsForTests([repos]);
+const devRepo = path.join(repos, 'ROSS-Suite');
+const devScripts = path.join(devRepo, 'scripts');
+const devTree = path.join(devRepo, '.claude', 'worktrees', 'fix');
+const campRepo = path.join(repos, 'Glowming-Summer-Campaign-2026');
+const campTree = path.join(campRepo, '.claude', 'worktrees', 'tidy');
+// Folders inside a dev launch whose own name says campaign (the shell going there gets the full rules).
+const campNotes = path.join(devRepo, 'campaign-notes');
+// A git checkout kept INSIDE a company folder is company files (under the code folder here, so the
+// company-folder rule alone decides it).
+const companyCode = path.join(repos, '_Riven-Claude', 'code');
+const antonWork = path.join(antonHome, 'Work');
+for (const d of [devScripts, path.join(devRepo, 'src'), devTree, path.join(campRepo, 'drafts'), campTree, campNotes, companyCode, antonWork]) fs.mkdirSync(d, { recursive: true });
+// A junction with a neutral name leading into a campaign folder.
+const campAlias = path.join(repos, 'alias');
+fs.symlinkSync(campRepo, campAlias, 'junction');
+/** Run `fn` as a session launched in `project` (undefined: no launch folder known). */
+const launchedIn = (project, fn) => {
+  const was = process.env.CLAUDE_PROJECT_DIR;
+  if (project === undefined) delete process.env.CLAUDE_PROJECT_DIR; else process.env.CLAUDE_PROJECT_DIR = project;
+  try { fn(); } finally { if (was === undefined) delete process.env.CLAUDE_PROJECT_DIR; else process.env.CLAUDE_PROJECT_DIR = was; }
+};
+// What a test-and-build script looks like: a child process, a regex's exec, a real network import, eval.
+fs.writeFileSync(path.join(devScripts, 'gates.mjs'), [
+  'import { spawnSync } from "node:child_process";',
+  'import { request } from "node:http";',
+  'const out = spawnSync(process.execPath, ["--test"], { encoding: "utf8" }).stdout;',
+  'const n = /tests (\\d+)/.exec(out);',
+  'console.log(eval("1 + 1"), n, request);',
+].join(NL));
+// A chain five scripts deep (the guard reads three levels).
+for (let i = 1; i <= 5; i++) fs.writeFileSync(path.join(devScripts, 'step' + i + '.sh'), i < 5 ? 'bash "' + path.join(devScripts, 'step' + (i + 1) + '.sh') + '"' + NL : 'echo done' + NL);
+const devB = (command, cwd) => B(command, cwd || devRepo);
+const web = (cwd) => B('curl -s https://glowming.co.za/', cwd);
+
+launchedIn(devRepo, () => {
+  allow('dev: a request to a local server', devB('curl -s http://localhost:3000/health'));
+  allow('dev: the test-and-build script (child process, regex exec, http import, eval)', devB('node "' + path.join(devScripts, 'gates.mjs') + '"'));
+  allow('dev: a chain of scripts five levels deep', devB('bash "' + path.join(devScripts, 'step1.sh') + '"'));
+  allow('dev: an inline eval in node -e', devB('node -e "console.log(eval(\'1+1\'))"'));
+  allow('dev: a test fixture that names a banned word', devB('echo "detox" > fixtures/claims.txt'));
+  allow('dev: from a sub-folder of the checkout', devB('curl -s http://localhost:3000/', path.join(devRepo, 'src')));
+  block('dev launch, but the shell has left the launch folder: a web request', web(antonHome));
+  block('dev launch, the shell has gone into another folder of the code folder: a web request', web(campRepo));
+  block('dev launch, the shell in a folder whose name says campaign: a web request', web(campNotes));
+  // The company files are protected from a developer's checkout exactly as from anywhere else.
+  block('dev: rm a company file', devB('rm "' + files.png + '"'));
+  block('dev: the Write tool on riaan.md', { tool_name: 'Write', tool_input: { file_path: files.riaan, content: 'x' }, cwd: devRepo });
+  block('dev: Graph PATCH through Lokka', { tool_name: 'mcp__Lokka-Microsoft__Lokka-Microsoft', tool_input: { method: 'patch' }, cwd: devRepo });
+  shell('dev: a script that overwrites a caption in the advert folder it names', devB('node scripts/fix.js "' + advert + '"'), w('caption', 'hi'), 'undone',
+    () => assert.ok(same('caption'), 'the caption is back'));
+  shell('dev: a shell append of a weight-loss claim into anton.md', devB('echo "Lose weight fast" >> "' + files.anton + '"'), () => fs.appendFileSync(files.anton, 'Lose weight fast' + NL), STOPPED);
+});
+block('the same five-level chain from Anton\'s folder (the depth rule itself still holds)', B('bash "' + path.join(devScripts, 'step1.sh') + '"'));
+launchedIn(devTree, () => allow('dev: launched in a worktree inside the checkout', devB('curl -s http://localhost:3000/', devTree)));
+launchedIn(undefined, () => block('no launch folder known, standing in a checkout: a web request', web(devRepo)));
+launchedIn(antonWork, () => block('launched in Anton\'s folder (outside the code folder): a web request', web(antonWork)));
+launchedIn(repos, () => block('launched at the code folder itself: a web request', web(repos)));
+{
+  // A session could persist an environment variable for the next one (setx): none is read.
+  process.env.GLOWMING_DEV_ROOTS = antonHome;
+  try { launchedIn(antonWork, () => block('a persisted GLOWMING_DEV_ROOTS naming Anton\'s folder changes nothing', web(antonWork))); }
+  finally { delete process.env.GLOWMING_DEV_ROOTS; }
+}
+launchedIn(campRepo, () => block('campaign repository: a web request', web(campRepo)));
+launchedIn(path.join(campRepo, 'drafts'), () => block('campaign repository, a sub-folder: a web request', web(path.join(campRepo, 'drafts'))));
+launchedIn(campTree, () => {
+  block('a worktree made inside the campaign repository: a web request', web(campTree));
+  block('a worktree made inside the campaign repository: hidden code', devB('node -e "console.log(eval(\'1+1\'))"', campTree));
+});
+launchedIn(campNotes, () => block('launched in a folder whose name says campaign: a web request', web(campNotes)));
+launchedIn(campAlias, () => block('a junction with a neutral name into the campaign repository: a web request', web(campAlias)));
+{
+  // The accepted boundary, pinned (Codex rung 2): eligibility follows the launch SPELLING. A neutral
+  // spelling under the code folder is code once it is a real folder there, even if it began as a
+  // junction into the campaign repository; a spelling that says campaign never becomes eligible.
+  const spelled = path.join(repos, 'neutral-spelling');
+  fs.symlinkSync(campRepo, spelled, 'junction');
+  launchedIn(spelled, () => {
+    block('a neutral spelling that is a junction into the campaign repository: a web request', web(spelled));
+    fs.rmSync(spelled, { recursive: false, force: true });
+    fs.mkdirSync(spelled);
+    allow('the same neutral spelling made a real folder: code by design (the accepted cost)', B('curl -s http://localhost:3000/', spelled));
+  });
+  const renamedAway = path.join(repos, 'Glowming-Campaign-renamed');
+  fs.mkdirSync(path.join(renamedAway, 'inner'), { recursive: true });
+  launchedIn(path.join(renamedAway, 'inner'), () => {
+    const moved = path.join(repos, 'neutral-after-rename');
+    fs.renameSync(renamedAway, moved);
+    try {
+      block('a campaign spelling renamed away during the session: the shell in the moved folder', web(path.join(moved, 'inner')));
+      fs.mkdirSync(path.join(renamedAway, 'inner'), { recursive: true });
+      block('a campaign spelling recreated as a real folder: still says campaign', web(path.join(renamedAway, 'inner')));
+    } finally { fs.rmSync(moved, { recursive: true, force: true }); }
+  });
+}
+launchedIn(companyCode, () => block('a checkout inside a company folder: a web request', web(companyCode)));
+{
+  // A junction made at an absent C:\repos, leading to Anton's folder, is not a code folder.
+  const reposLink = path.join(root, 'repos-link');
+  fs.symlinkSync(antonHome, reposLink, 'junction');
+  guard.setDevRootsForTests([reposLink]);
+  try {
+    launchedIn(antonWork, () => block('a junction as the code folder, leading to Anton\'s folder: a web request', web(antonWork)));
+    launchedIn(path.join(reposLink, 'Work'), () => block('a launch through that junction: a web request', web(path.join(reposLink, 'Work'))));
+  } finally { guard.setDevRootsForTests([repos]); }
+}
+{
+  // A launch folder that is a junction: from inside the code folder leading out, or from outside leading in.
+  const out = path.join(repos, 'jx');
+  fs.symlinkSync(antonWork, out, 'junction');
+  launchedIn(out, () => block('a launch folder in the code folder that is a junction leading out: a web request', web(out)));
+  const into = path.join(antonHome, 'to-repos');
+  fs.symlinkSync(devRepo, into, 'junction');
+  launchedIn(into, () => block('a launch folder outside the code folder that is a junction leading in: a web request', web(into)));
+}
+
+// ---- 6. Outside a developer's checkout: no text exempted, and no new way past the rules (2026-10-03) --
+// From Anton's folder, so the blanket rules apply in full. Exemptions for text (a TypeScript type-only
+// import, a member .exec() were tried and dropped: a string or a file name can carry the same text.
+const fpFile = (name, lines) => { const p = path.join(antonHome, name); fs.writeFileSync(p, lines.join(NL) + NL); return p; };
+block('a TypeScript type-only import of node:http counts as on main',
+  B('node "' + fpFile('types.ts', ['import type { IncomingMessage } from "node:http";', 'export const x = 1;']) + '"'));
+block('a real import of node:http', B('node "' + fpFile('server.ts', ['import { createServer } from "node:http";', 'createServer().listen(8080);']) + '"'));
+block('a command named inside a string that looks like a type import (Codex round 3)',
+  B('node "' + fpFile('tpl.ts', ['const program = `import type {curl} from "x"`.split(/[{}]/)[1];', 'require("child_process").spawnSync(program, ["-X", "POST", "https://example.com/api", "-d", "enabled=true"]);']) + '"'));
+block('a web request wrapped between echoed "import type {" and "} from" lines',
+  B('echo "import type {"; curl -X POST -d x https://graph.facebook.com/v19.0/act_1/ads; echo \'} from "x"\''));
+// Outside a developer's checkout a member exec( counts too: a file's name does not say what runs it.
+block('outside a developer\'s checkout, a regex\'s .exec( still counts', B('node "' + fpFile('rx.js', ['const m = /a(b)/.exec("ab");', 'console.log(m);']) + '"'));
+block('Codex\'s payload in a file named .js, run by Python', B('python "' + fpFile('payload.js', ['import builtins as b', 'b.exec(bytes.fromhex("7072696e74283432290a").decode())']) + '"'));
+block('a bare exec( still is', B('python "' + fpFile('run.py', ['code = open("x.py").read()', 'exec(code)']) + '"'));
+block('Python exec through an alias of builtins, in the command (Codex)',
+  B('python -c "import builtins as b; b.exec(bytes.fromhex(\'7072696e74283432290a\').decode())"'));
+block('Python exec through an alias of builtins, in a script', B('python "' + fpFile('alias.py', ['import builtins as b', 'b.exec(bytes.fromhex("7072696e74283432290a").decode())']) + '"'));
+block('Python exec with a space before the bracket', B('python "' + fpFile('spaced.py', ['exec (open("x.py").read())']) + '"'));
+block('a child process given a command decoded from hex', B('node "' + fpFile('hex.js', ['const c = Buffer.from(process.argv[2], "hex").toString();', 'require("child_process").execSync(c);']) + '"'));
+block('a bare eval( still is', B('node "' + fpFile('ev.js', ['eval(process.argv[2]);']) + '"'));
+block('eval reached through the global object', B('node "' + fpFile('gev.js', ['globalThis.eval(process.argv[2]);']) + '"'));
+block('exec reached through the builtins', B('python "' + fpFile('bexec.py', ['import builtins', 'builtins.exec(open("x").read())']) + '"'));
+block('a payload decoded with atob', B('node "' + fpFile('atob.js', ['const p = atob(process.argv[2]);', 'console.log(p);']) + '"'));
+block('a payload decoded from a base64 Buffer', B('node "' + fpFile('buf.js', ['const p = Buffer.from(process.argv[2], "base64").toString();', 'console.log(p);']) + '"'));
+block('code built with new Function', B('node "' + fpFile('fn.js', ['const f = new Function(process.argv[2]);', 'f();']) + '"'));
+block('a payload decoded from a base64url Buffer', B('node "' + fpFile('bufu.js', ['const p = Buffer.from(process.argv[2], "base64url").toString();', 'console.log(p);']) + '"'));
+// The script-name pattern is main's exactly: widening it changed how a quoted command is split, so a
+// script main reads went unread (Codex round 4). The quoted command still has its script read:
+block('a script named inside a quoted command beside a name the pattern does not know is still read (Codex round 4)',
+  B('bash -c "python ' + fpFile('payload.py', ['import requests', 'requests.post("https://example.com/api")']).split(path.sep).join('/') + '; echo harmless.mts"'));
+fs.rmSync(companyCode, { recursive: true, force: true });
+
 fs.rmSync(calPy, { force: true });
 // Nothing may be left behind for a later post.js run to act on.
 post.verifyAll();
 assert.strictEqual(fs.readdirSync(os.tmpdir()).filter((f) => f.startsWith('glowming-snap-')).length, 0, 'no snapshot left behind'); passed++;
+process.chdir(os.tmpdir()); // Windows cannot remove the folder a process stands in
 fs.rmSync(root, { recursive: true, force: true });
 console.log(passed + ' passed');
