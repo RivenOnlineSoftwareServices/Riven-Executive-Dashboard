@@ -30,9 +30,11 @@ The Glowming Summer Campaign 2026 for owners who work with their own Claude (bui
   web requests, no hidden code, no deep or very large script chains, no claim text in shell writes)
   step aside, because a code repository legitimately runs servers, local requests and build scripts.
   Everything that protects the company files still applies there: file tools, connectors, deletes, and
-  the copy post.js checks. The decision uses only facts a session cannot change; reading git remotes,
-  marker files or session records was tried and dropped, because a session could rewrite each of them
-  (Codex and Claude review, 2026-10-03). Anton launches in the synced folders, which never count;
+  the copy post.js checks. Eligibility is bounded by the launch folder's spelling, which a session
+  cannot change: a spelling that says "campaign" or lies outside the code folder never becomes
+  eligible, whatever the session does on disk; any other spelling under the code folder is code by
+  design. Reading git remotes, marker files or session records was tried and dropped, because a
+  session could rewrite each of them (Codex and Claude review, 2026-10-03). Anton launches in the synced folders, which never count;
   the campaign repository and the worktrees made inside it say "campaign" in their path (Riaan,
   2026-10-03).
 - Outside a developer's checkout no text is exempted from the rules: every `eval(` and `exec(` is

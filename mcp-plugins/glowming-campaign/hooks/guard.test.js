@@ -510,6 +510,30 @@ launchedIn(campTree, () => {
 });
 launchedIn(campNotes, () => block('launched in a folder whose name says campaign: a web request', web(campNotes)));
 launchedIn(campAlias, () => block('a junction with a neutral name into the campaign repository: a web request', web(campAlias)));
+{
+  // The accepted boundary, pinned (Codex rung 2): eligibility follows the launch SPELLING. A neutral
+  // spelling under the code folder is code once it is a real folder there, even if it began as a
+  // junction into the campaign repository; a spelling that says campaign never becomes eligible.
+  const spelled = path.join(repos, 'neutral-spelling');
+  fs.symlinkSync(campRepo, spelled, 'junction');
+  launchedIn(spelled, () => {
+    block('a neutral spelling that is a junction into the campaign repository: a web request', web(spelled));
+    fs.rmSync(spelled, { recursive: false, force: true });
+    fs.mkdirSync(spelled);
+    allow('the same neutral spelling made a real folder: code by design (the accepted cost)', B('curl -s http://localhost:3000/', spelled));
+  });
+  const renamedAway = path.join(repos, 'Glowming-Campaign-renamed');
+  fs.mkdirSync(path.join(renamedAway, 'inner'), { recursive: true });
+  launchedIn(path.join(renamedAway, 'inner'), () => {
+    const moved = path.join(repos, 'neutral-after-rename');
+    fs.renameSync(renamedAway, moved);
+    try {
+      block('a campaign spelling renamed away during the session: the shell in the moved folder', web(path.join(moved, 'inner')));
+      fs.mkdirSync(path.join(renamedAway, 'inner'), { recursive: true });
+      block('a campaign spelling recreated as a real folder: still says campaign', web(path.join(renamedAway, 'inner')));
+    } finally { fs.rmSync(moved, { recursive: true, force: true }); }
+  });
+}
 launchedIn(companyCode, () => block('a checkout inside a company folder: a web request', web(companyCode)));
 {
   // A junction made at an absent C:\repos, leading to Anton's folder, is not a code folder.

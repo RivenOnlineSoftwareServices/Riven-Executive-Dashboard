@@ -330,12 +330,14 @@ function underDevRoot(dir) {
 }
 
 /**
- * Whether the session works in a developer's checkout, decided ONLY from facts the session cannot
- * change, so no command can turn it on: the folder the session was launched in (CLAUDE_PROJECT_DIR,
- * set by Claude Code and fixed for the session; the hook's `cwd` follows every `cd`) must be strictly
- * inside the owner's code folder (devRoots), with no link or junction anywhere in its path, and its
- * path must not say campaign or name a company folder; the shell must still be inside that launch
- * folder. Earlier versions also read git remotes, a marker file, a worktree's .git link and a record
+ * Whether the session works in a developer's checkout. Eligibility is bounded by the SPELLING of the
+ * folder the session was launched in (CLAUDE_PROJECT_DIR, set by Claude Code and fixed for the
+ * session; the hook's `cwd` follows every `cd`): it must be strictly inside the owner's code folder
+ * (devRoots, compared as written); then, on every call, the shell's folder RESOLVED through links must
+ * be inside that spelling and must neither say campaign nor be a company folder. A launch spelling
+ * that says campaign, or lies outside the code folder, can never become eligible, whatever the session
+ * changes on disk; a neutral spelling under the code folder is code by design (Codex rung 2: replacing
+ * a junction at such a spelling with a real folder makes it eligible, inside the accepted cost below). Earlier versions also read git remotes, a marker file, a worktree's .git link and a record
  * written at session start: each was something a session could rewrite to turn the rules off
  * (Codex and Claude review, 2026-10-03), so none is read. The cost, stated in the README: a campaign
  * checkout under the code folder whose path does not say campaign counts as code.
