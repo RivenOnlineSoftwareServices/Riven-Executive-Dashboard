@@ -1,7 +1,7 @@
 # Design note: the campaign guard is for Anton, Etienne and Louis, never for Riaan
 
-Rule #41 (a guard is a risk surface). Plugin `glowming-campaign`, 2026-10-03. Round 3: Codex design
-rounds 1 (C1-C7) and 2 (D1-D7) answered inline.
+Rule #41 (a guard is a risk surface). Plugin `glowming-campaign`, 2026-10-03. Round 4: Codex design
+rounds 1 (C1-C7), 2 (D1-D7) and 3 (E1-E5) answered inline.
 
 ## Why
 
@@ -25,13 +25,15 @@ Forging an identity variable is deliberate, so it is in the same class as disabl
    1. An **app-set** address: `CLAUDE_CODE_ENTRYPOINT` is `claude-desktop` (desktop Code tab) or
       `local-agent` (Cowork), the launchers that set `CLAUDE_CODE_USER_EMAIL` from the signed-in
       account and replace any inherited value. Riaan's address -> **off**; any other -> **full**.
-   2. The operating-system account (`os.userInfo().username`, case-insensitive) is Riaan's
-      (`riaan` on Windows, `riaanventer` on the Mac) -> **off**. A recognised Riaan account beats an
-      address of unknown origin (D2).
+   2. Riaan's **provisioned machine**: the operating-system account AND the machine name, as a pair
+      (`os.userInfo().username`, `os.hostname()` without `.local`, case-insensitive): `riaan` on
+      `ZENBOOKDUO-RV26`, `riaanventer` on `Riaans-MacBook-Air` -> **off** (E2: a user name alone is
+      reusable on another machine or image). A recognised Riaan machine beats an address of unknown
+      origin (D2).
    3. An address from any other launcher (plain CLI, cloud): Riaan's -> **off**; any other -> **full**.
    4. Nothing usable -> **campaign**.
 2. **off:** `guard.js` allows; `post.js` returns before any check, put-back or warning.
-3. **Tamper rule** (full and campaign, every call, before scope).
+3. **Tamper rule** (full: every call; campaign: file-tool writes to settings files only), before scope.
 4. **full:** the 0.1.3 guard unchanged, with #19's step-aside in a developer's checkout.
 5. **campaign:** scope discovery, then out-of-scope calls are allowed, in-scope calls judged by every
    full-mode rule (below).
@@ -42,24 +44,35 @@ the only thing that matters for "never Riaan"; Anton's / Etienne's / Louis's kno
 `etienne@glowming.co.za`, `louis@glowming.co.za`, `louis@riven.global`) are named in the code for
 the diagnostic.
 
-**C1/D1, scope of "the three".** Their claude.ai sign-in addresses are not recorded (gap, reported;
+**C1/D1/E1, scope of "the three".** Their claude.ai sign-in addresses are not recorded (gap, reported;
 the lane may not ask Riaan). Any non-Riaan address is treated like the three: the marketplace repo is
 public, so a stranger could install the plugin; today they get the full guard, and still do. That is
 a deliberate fail-toward-protection for non-Riaan people, not a claim that they are "the three".
 Campaign mode is explicitly LIMITED local protection for sessions with no usable identity; it is
-neither full protection nor guaranteed silence, and the note does not claim it is.
+neither full protection nor guaranteed silence. **Authority (E1):** the lane brief from Riaan's
+session for this work names this exact trade: "unknown -> on but only for the campaign surfaces,
+never for code repos (keep #19's code-repo step-aside)", and says an unknown identity on Riaan's
+machines must not block him; Riaan's provisioned machines are never unknown (1.1 or 1.2). An
+operator-provisioned mapping for other surfaces (cloud, a new machine) is a follow-up, reported.
 
-## Tamper rule (C3, D3)
+## Tamper rule (C3, D3, E3, E4)
 
-Refused in full and campaign mode:
-- a shell command, or a script it runs (the same three-level read as today), whose text names
-  `CLAUDE_CODE_USER_EMAIL`, `CLAUDE_CODE_ENTRYPOINT`, `disableAllHooks` or `enabledPlugins`, or runs
-  `claude plugin disable|uninstall|remove`;
-- a file-tool write to a Claude settings file (`settings.json`, `settings.local.json`,
-  `managed-settings.json`, `.claude.json`) judged on the **resulting** file text, not the fragment:
-  refused if the result sets `disableAllHooks` true, sets a `glowming-campaign@...` key false in
-  `enabledPlugins`, or names either identity variable, where the current file did not already.
-  Other files (a document that mentions the variable) are not affected.
+Full mode, a shell command or a script it runs (the same three-level read as today) is refused if its
+text: names `CLAUDE_CODE_USER_EMAIL`, `CLAUDE_CODE_ENTRYPOINT`, `CLAUDE_CONFIG_DIR`, `disableAllHooks`
+or `enabledPlugins`; runs `claude plugin disable|uninstall|remove` or passes `--settings` /
+`--setting-sources` / `--plugin-dir` to a `claude` launch; or names a Claude settings file
+(`settings.json` / `settings.local.json` under a `.claude` folder, `.claude.json`,
+`managed-settings.json`) and is not a plain read (`isReadOnly`). So copying any file over a settings
+file is refused by its destination, whatever the source file is called (E4).
+
+Full and campaign mode, a file-tool write to a Claude settings file (`settings.json`,
+`settings.local.json`, `managed-settings.json`, `.claude.json`) is judged on the **parsed** current and
+resulting JSON (E3): refused if `disableAllHooks` becomes true, any `enabledPlugins` key starting
+`glowming-campaign@` is set false or removed, or `env.CLAUDE_CODE_USER_EMAIL`,
+`env.CLAUDE_CODE_ENTRYPOINT` or `env.CLAUDE_CONFIG_DIR` is added, changed or removed. If the resulting
+text cannot be worked out or does not parse as JSON, the write is refused (a settings file that does
+not parse is not a settings file Claude Code reads either, but the edit cannot be checked). Other
+files (a document that mentions the variable) are not affected.
 
 ## Campaign mode (C6, D4)
 
@@ -76,7 +89,7 @@ Stated consequences (C4): a remote company resource reached only by ID (a Graph 
 ID, an email send by message ID) is not judged in campaign mode; a disposable folder named with a
 company marker (`/tmp/2026 Summer Campaign`) is judged in every mode but off.
 
-## Snapshots (C5, D5)
+## Snapshots (C5, D5, E5)
 
 A snapshot is processed only by the post hook of the call that took it (`tool_use_id`, recorded with
 its `session_id`). A snapshot older than six hours, or with no matching call, is deleted without
@@ -85,10 +98,13 @@ restoring. `post.js` also runs on `PostToolUseFailure`. In off mode `post.js` to
 **D5, concurrent writers.** Riaan never runs the guard, so his own sessions never restore anything.
 A guarded session on ANOTHER machine compares a folder before and after one shell command; a change
 OneDrive syncs in during that command (seconds) is indistinguishable from the command's own, and is
-put back. That is pre-existing, not introduced here, and the window is one command. Keeping the
-changed copy beside the file was rejected (it would add files to the synced company folders); the
-put-back message now says SharePoint version history holds the changed version. The promise is therefore "never refuses, blocks or changes
-anything in Riaan's own sessions", not "nothing anywhere ever reverts a change of his".
+put back. The same holds for another local session writing during the window (snapshot to
+post-check, not only the command). That is pre-existing, not introduced here. **Displaced bytes are
+kept (E5):** before `post.js` puts a file back or removes a new file, it copies the version it is
+displacing to `<home>/.glowming-guard-recovery/<date-time>/` (outside every synced folder) and the
+message names that path. The promise is therefore "never refuses, blocks or changes anything in
+Riaan's own sessions; a guarded session elsewhere that reverts a concurrent change keeps a copy of
+it", not "nothing anywhere ever reverts a change of his".
 
 ## The warning check (C7, D7)
 
@@ -99,8 +115,11 @@ redacted `systemMessage` (shown to the person) and `hookSpecificOutput` (`hookEv
 written fields. It finds: well-known key and token shapes, private-key blocks, `password|secret|api
 key|token = <value>` assignments, Luhn-valid 13-19 digit runs (cards, SA ID numbers) and banned
 claims. Narrower than the LLM (no bank account numbers, no "could Meta or the ARB reject this"); a
-Luhn-valid order number can warn falsely. Full mode: every write; campaign: writes into company
-folders; off: none. Restore messages (exit 2) stay separate from warnings.
+Luhn-valid order number can warn falsely. "Every write" means the file tools (Write, Edit,
+MultiEdit, NotebookEdit) on a successful `PostToolUse`; shell and connector writes are not inspected
+for warnings. Full mode: every such write; campaign: those into company folders; off: none.
+`PostToolUseFailure` runs snapshot recovery only, never a warning. Restore messages (exit 2) stay
+separate from warnings.
 
 ## Validation (D6)
 
@@ -116,8 +135,8 @@ run them (no new sessions); they are listed as owed.
 | Surface | Decided by | Mode |
 |---|---|---|
 | Riaan, Windows, desktop Code tab | 1.1 email + `claude-desktop` | off |
-| Riaan, Windows, plain `claude` CLI | 1.2 OS `riaan` | off |
-| Riaan, Mac, desktop Code / CLI | 1.1, else 1.2 `riaanventer` | off |
+| Riaan, Windows, plain `claude` CLI | 1.2 `riaan` on `ZENBOOKDUO-RV26` | off |
+| Riaan, Mac, desktop Code / CLI | 1.1, else 1.2 `riaanventer` on `Riaans-MacBook-Air` | off |
 | Riaan, Cowork (VM) | 1.1 email + `local-agent` (by source) | off; if the VM lacks it: 1.3/1.4 |
 | Riaan, cloud session | 1.3 his address if present, else 1.4 | off, else campaign |
 | Anton, Etienne, Louis: Cowork, desktop Code | 1.1 their address | full |
@@ -132,7 +151,8 @@ run them (no new sessions); they are listed as owed.
 | Cowork sets the address and `CLAUDE_CODE_ENTRYPOINT=local-agent` | desktop app source `app.asar` 2.19675.0 | by source; live NOT measured: owed via the identity file |
 | A hook sees those variables | Claude Code 2.1.286 binary: hooks get the process env; the credential scrub names tokens and keys only | inferred; owed via the identity file |
 | Windows OS account | `os.userInfo()` here | `riaan` |
-| Mac OS account | `Borg-Cloud/docs/M1-AIR.md` | `riaanventer` |
+| Windows machine name | `os.hostname()` here | `ZENBOOKDUO-RV26` |
+| Mac OS account and machine name | `Borg-Cloud/docs/M1-AIR.md` (User, LAN name) | `riaanventer`, `Riaans-MacBook-Air.local`; `os.hostname()` on the Air NOT measured here: if it differs, the Mac's plain CLI falls to 1.3/1.4 (its desktop Code tab is 1.1) |
 | The three's claude.ai addresses; Anton's Windows user name | Borg People & Roles, onboarding packets, shared folder | NOT recorded (gap); not needed by the rule |
 
 ## Not in this change
