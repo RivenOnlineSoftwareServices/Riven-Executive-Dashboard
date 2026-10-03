@@ -33,6 +33,15 @@
  * shell rules (no web requests, no hidden code, no deep or very large script chains, no claim text
  * in shell writes) step aside there; everything that protects the company files still applies.
  *
+ * WHO it guards (operator ruling 2026-10-03: "Anton, Etienne and Louis please", never Riaan; design
+ * note docs/glowming-campaign-guard-identity.md): identity() picks one of three modes. OFF for Riaan
+ * (his signed-in address from the desktop app or Cowork, else his own account on his own machine):
+ * nothing here runs. FULL for any other signed-in address: everything below. CAMPAIGN when no
+ * identity can be read: only calls that touch the company folders are judged. A short tamper list
+ * (switching the guard off through settings, launch flags or the identity variables) applies in
+ * FULL and, in part, in CAMPAIGN. It is an accidental-misuse guard: the tamper list is closed and
+ * not claimed complete.
+ *
  * Known limits (stated in the README): a script that builds company paths at run
  * time with no folder name in its text; a Python module run with -m; in a
  * developer's checkout, nothing stops a web request (adverts, the shop, email), and a
@@ -64,6 +73,78 @@ const PROTECTED_MARKERS = [
   'gsa all assets',
   'sa operations',
 ];
+// ---- Who is working (design note, "The rule, in order") -------------------------------------------
+// Riaan's addresses. Only these turn the guard OFF; every other address gets the FULL guard.
+const OWNER_EMAILS = ['riaan@riven.co.za', 'riaan.venter@riven.co.za'];
+// Riaan's provisioned machines: his OS account AND the machine name, as a pair (a user name alone is
+// reusable on another machine or image). Machine names compared without ".local", case-insensitive.
+const OWNER_MACHINES = [
+  { user: 'riaan', host: 'zenbookduo-rv26' }, // Windows, measured 2026-10-03
+  { user: 'riaanventer', host: 'riaans-macbook-air' }, // the M1 Air, Borg-Cloud/docs/M1-AIR.md
+];
+// The launchers that set CLAUDE_CODE_USER_EMAIL from the signed-in account, replacing any inherited
+// value: the desktop app's Code tab and Cowork. From any other launcher the address may be inherited.
+const APP_ENTRYPOINTS = ['claude-desktop', 'local-agent'];
+// The three the ruling names (their known work addresses; their claude.ai sign-in addresses are not
+// recorded). Used only to name the person in the identity record; any non-Riaan address is FULL.
+const THE_THREE = {
+  'anton@riven.global': 'Anton', 'anton@titaninternational.co.za': 'Anton',
+  'etienne@riven.global': 'Etienne', 'etienne@glowming.co.za': 'Etienne',
+  'louis@glowming.co.za': 'Louis', 'louis@riven.global': 'Louis',
+};
+let testMachine = null;
+
+/** This machine's OS account and name, or null when either cannot be read (never an error). */
+function machine() {
+  if (testMachine === false) return null; // tests: the lookup failed
+  if (testMachine) return testMachine;
+  const sys = testOs || os;
+  try {
+    return {
+      user: String(sys.userInfo().username || '').toLowerCase(),
+      host: String(sys.hostname() || '').toLowerCase().replace(/\.local$/, ''),
+    };
+  } catch (e) { return null; }
+}
+let testOs = null;
+
+/**
+ * Does a bare word in a command or a connector argument name something on disk from `cwd`? A
+ * folder or file with no slash and no extension (`adverts`, a junction) is a path too (Codex code r2).
+ */
+function existsFrom(piece, cwd) {
+  if (!piece || piece.length >= 1024 || /^-/.test(piece)) return false;
+  try { return fs.existsSync(path.resolve(cwd || process.cwd(), piece)); } catch (e) { return false; }
+}
+
+/**
+ * Which guard applies to this session: { mode: 'off' | 'full' | 'campaign', rule, entrypoint, domain }.
+ * 1.1 an app-set address (desktop Code tab, Cowork): Riaan's -> off, any other -> full;
+ * 1.2 Riaan's own account on his own machine -> off (beats an address of unknown origin);
+ * 1.3 an address from any other launcher: Riaan's -> off, any other -> full;
+ * 1.4 nothing usable -> campaign.
+ */
+function identity() {
+  const email = String(process.env.CLAUDE_CODE_USER_EMAIL || '').trim().toLowerCase();
+  const entrypoint = String(process.env.CLAUDE_CODE_ENTRYPOINT || '').trim().toLowerCase();
+  const domain = email.includes('@') ? email.slice(email.indexOf('@') + 1) : '';
+  const byEmail = (rule) => ({ mode: OWNER_EMAILS.includes(email) ? 'off' : 'full', rule, entrypoint, domain, who: OWNER_EMAILS.includes(email) ? 'Riaan' : (THE_THREE[email] || 'other') });
+  if (email && APP_ENTRYPOINTS.includes(entrypoint)) return byEmail('1.1');
+  const m = machine();
+  if (m && OWNER_MACHINES.some((o) => o.user === m.user && o.host === m.host)) return { mode: 'off', rule: '1.2', entrypoint, domain, who: 'Riaan' };
+  if (email) return byEmail('1.3');
+  return { mode: 'campaign', rule: '1.4', entrypoint, domain, who: 'unknown' };
+}
+
+/** One non-secret line per hook run, for checking each surface after install. Best effort, silent. */
+function recordIdentity(hook, id) {
+  try {
+    fs.writeFileSync(path.join(os.tmpdir(), 'glowming-guard-identity.json'), JSON.stringify({
+      hook, mode: id.mode, rule: id.rule, who: id.who, entrypoint: id.entrypoint, domain: id.domain, time: new Date().toISOString(),
+    }) + NL);
+  } catch (e) { /* the record is for people checking; it never affects the decision */ }
+}
+
 // Existing files in work/anton/ may change only if they are plain text; anything else gets a new version.
 const EDITABLE_TEXT = /\.(md|txt|csv|json|html?)$/i;
 const CALENDAR = '02 posting calendar.xlsx';
@@ -243,6 +324,80 @@ function checkWrite(tool, input, cwd, before) {
   return 'That folder is outside the campaign files this Claude may change. Ask Riaan\'s side in anton.md under ## Questions.';
 }
 
+// ---- Tamper list (design note, "Tamper rule"): CLOSED, not claimed complete ------------------------
+const SETTINGS_ENV_KEYS = ['CLAUDE_CODE_USER_EMAIL', 'CLAUDE_CODE_ENTRYPOINT', 'CLAUDE_CONFIG_DIR', 'CLAUDE_CODE_SIMPLE', 'CLAUDE_CODE_SAFE_MODE'];
+const TAMPER_NAMES = /claude_code_user_email|claude_code_entrypoint|claude_config_dir|claude_code_simple|claude_code_safe_mode|disableallhooks|enabledplugins/i;
+const CLAUDE_LAUNCH_FLAGS = /\bclaude(\.exe)?\b[^\n;&|]*?\s--(settings|setting-sources|plugin-dir|bare|safe-mode)\b/i;
+// The executable may be quoted ("C:/Tools/claude.exe" plugin disable ...), Codex code r1.
+const PLUGIN_OFF = /\bclaude(\.exe)?["']?\s+plugins?\s+(disable|uninstall|remove|rm)\b/i;
+// A settings file NAME anywhere in the command text (not resolved: `cd ~/.claude && cp x settings.json`).
+const SETTINGS_NAME = /(^|[^\w.-])(settings(\.local)?\.json|\.claude\.json|managed-settings\.json)(?![\w.-])/i;
+// A folder called .claude named in the text (a reset of the settings folder).
+const CLAUDE_DIR = /(^|[\\/\s"'=])\.claude([\\/\s"']|$)/i;
+const SIMPLE_READ = /^\s*(cat|type|head|tail|less|more|get-content|gc|wc|stat|ls|dir|test-path|get-item)(\s|$)/i;
+
+/**
+ * One read command and nothing else: no chain, pipe, background, newline, output or input redirect,
+ * process substitution (`<(...)`) or command substitution.
+ */
+function singleSimpleRead(cmd) {
+  const c = cmd.replace(/(&|\d)?>{1,2}\s*(\/dev\/null|nul)\b/gi, '');
+  if (/[;&|<\n\r`]|\$\(/.test(c) || REDIRECT.test(c)) return false;
+  return SIMPLE_READ.test(c);
+}
+
+/** Shell tamper check. Null = fine, else the reason. `full` adds the identity and setting names. */
+function shellTamper(cmd, scriptText, full) {
+  // A single simple read runs no script, even one it reads: only its own text is judged (Codex code r1).
+  const all = singleSimpleRead(cmd) ? cmd : cmd + scriptText;
+  if (PLUGIN_OFF.test(all) || CLAUDE_LAUNCH_FLAGS.test(all)) {
+    return 'Starting Claude without its settings or plugins, or switching a plugin off, is not allowed from this Claude. Ask Riaan\'s side.';
+  }
+  if (REMOVE_SHELL.test(all) && CLAUDE_DIR.test(all)) {
+    return 'Deleting, moving or renaming Claude\'s own settings folder (.claude) is not allowed from this Claude. Ask Riaan\'s side.';
+  }
+  if (SETTINGS_NAME.test(all) && !singleSimpleRead(cmd)) {
+    return 'Claude\'s settings files may only be read from the shell, one plain read at a time (cat, type, Get-Content). Ask Riaan\'s side to change them.';
+  }
+  if (full && TAMPER_NAMES.test(all)) {
+    return 'That command names one of the settings that decide whether the campaign guard runs. Ask Riaan\'s side.';
+  }
+  return null;
+}
+
+/** Is this (absolute) path one of Claude's settings files? */
+function isSettingsFile(abs) {
+  const base = path.basename(abs).toLowerCase();
+  if (base === '.claude.json' || base === 'managed-settings.json') return true;
+  if (base !== 'settings.json' && base !== 'settings.local.json') return false;
+  const dir = path.dirname(abs);
+  if (path.basename(dir).toLowerCase() === '.claude') return true;
+  const cfg = process.env.CLAUDE_CONFIG_DIR;
+  return !!cfg && norm(realLocation(cfg, process.cwd())).replace(/\/+$/, '') === norm(dir).replace(/\/+$/, '');
+}
+
+/** A file-tool write to a settings file, judged on the parsed current and resulting JSON. */
+function checkSettingsWrite(tool, input, raw) {
+  const REFUSE = 'That change to Claude\'s settings would switch the campaign guard off or change who it thinks is working. Ask Riaan\'s side.';
+  // A notebook tool has no resulting text to check, so it lands in the "could not be checked" refusal.
+  const current = fs.existsSync(raw) ? readText(raw) : null;
+  if (fs.existsSync(raw) && current === null) return REFUSE;
+  const next = resultingText(tool, input, current);
+  const parse = (t) => { try { const v = JSON.parse(String(t).replace(/^﻿/, '')); return v && typeof v === 'object' ? v : null; } catch (e) { return null; } };
+  const after = next === null ? null : parse(next);
+  if (after === null) return 'That settings file change could not be checked (the result is not plain JSON). Ask Riaan\'s side.';
+  const before = (current === null ? {} : parse(current)) || {};
+  if (after.disableAllHooks && !before.disableAllHooks) return REFUSE;
+  const plugins = (o) => (o && typeof o.enabledPlugins === 'object' && o.enabledPlugins) || {};
+  const pb = plugins(before);
+  const pa = plugins(after);
+  for (const k of Object.keys(pb)) if (/^glowming-campaign@/i.test(k) && pb[k] !== false && (!(k in pa) || pa[k] === false)) return REFUSE;
+  for (const k of Object.keys(pa)) if (/^glowming-campaign@/i.test(k) && pa[k] === false && pb[k] !== false) return REFUSE;
+  const env = (o) => (o && typeof o.env === 'object' && o.env) || {};
+  for (const k of SETTINGS_ENV_KEYS) if (JSON.stringify(env(before)[k]) !== JSON.stringify(env(after)[k])) return REFUSE;
+  return null;
+}
+
 // Deleting, moving or renaming: never in a company folder, the posting calendar included.
 const REMOVE_SHELL = /(^|[\s;&|(])(rm|del|erase|rmdir|rd|mv|move|ren|rename|unlink|shred|truncate)(\s|$)|remove-item|move-item|rename-item|clear-content|robocopy|xcopy|rsync|shutil\.(rmtree|move)|os\.(remove|unlink|rename|replace|rmdir)|\.unlink\(|\.rename\(|\.rmdir\(|\b(rmsync|unlinksync|rmdirsync|renamesync)\b|\bfs\.(rm|unlink|rmdir|rename)\b|\bfs\.promises\.(rm|unlink|rmdir|rename)\b|git\s+(clean|checkout|reset|rm|mv)/i;
 // Writing file contents from code (command text AND the scripts it runs).
@@ -363,22 +518,31 @@ function devCheckout(cwd) {
 }
 
 /** Decide one shell command, including the scripts it runs. */
-function checkBash(input, cwd, callId) {
+function checkBash(input, cwd, callId, mode) {
   const cmd = String(input.command || '');
   // In a developer's checkout only the company-folder protection applies (devCheckout).
   const dev = devCheckout(cwd);
-  if (!dev && HIDDEN_CODE.test(cmd)) {
-    return 'Commands that hide or stream the code they run (encoded, eval/exec, stdin) are not allowed from this Claude. Write the script to a file first so it can be checked.';
-  }
+  // Scope discovery first (design note, campaign mode step 1): the command, every script it runs,
+  // every path that names or resolves into a company folder, and the shell's own folder.
   const scripts = scriptsRun(cmd, cwd);
-  if (!dev && scripts.tooDeep > 0) {
-    return 'That chain of scripts is too deep or too large to check (more than three levels, or a script over 500 KB). Run the script directly.';
-  }
   const full = cmd + scripts.text;
   // Paths that only RESOLVE into a company folder (a symlink, "../..") count as naming it (Codex r9).
   const named = foldersNamed(full, cwd, false);
   const nfull = norm(full) + (named.length ? NL + named.map(norm).join(NL) : '');
-  const inFolder = isProtected(norm(cwd || ''));
+  // The shell's folder RESOLVED through links (a neutral junction leading into a company folder is in
+  // it), the same resolver every file check uses (Codex code r1).
+  const inFolder = isProtected(norm(cwd || '')) || (!!cwd && isProtected(norm(realLocation(cwd, process.cwd()))));
+  // The tamper list, before scope (FULL: all of it; CAMPAIGN: settings files and plugin switches).
+  const tamper = shellTamper(cmd, scripts.text, mode !== 'campaign');
+  if (tamper) return tamper;
+  // CAMPAIGN (no identity): a command that does not touch the company folders is not judged.
+  if (mode === 'campaign' && !(isProtected(nfull) || inFolder)) return null;
+  if (!dev && HIDDEN_CODE.test(cmd)) {
+    return 'Commands that hide or stream the code they run (encoded, eval/exec, stdin) are not allowed from this Claude. Write the script to a file first so it can be checked.';
+  }
+  if (!dev && scripts.tooDeep > 0) {
+    return 'That chain of scripts is too deep or too large to check (more than three levels, or a script over 500 KB). Run the script directly.';
+  }
   // Anywhere, not only near company folders: hidden code could make a web request or reach a
   // company file the guard never sees (Codex round 7).
   if (!dev && HIDDEN_CODE.test(scripts.text)) {
@@ -422,7 +586,7 @@ function isReadOnly(cmd) {
 /** Every company folder a command or its scripts name (plus the folder it runs in). */
 function foldersNamed(full, cwd, inFolder) {
   const dirs = new Set();
-  if (inFolder) dirs.add(path.resolve(cwd));
+  if (inFolder) dirs.add(realLocation(cwd, process.cwd()));
   // Candidates: every piece between quotes and line breaks, and every whitespace token. A path
   // inside a quoted one-liner (python -c "open(r'...')") is its own piece once split on quotes.
   const pieces = new Set();
@@ -434,7 +598,7 @@ function foldersNamed(full, cwd, inFolder) {
     if (!piece) continue;
     // A relative path is judged by where it LEADS from the session folder ("../../riaan.md"),
     // not by whether its own text names a company folder (Codex round 8).
-    const looksLikePath = /[\\/]/.test(piece) || /^\.\.?$/.test(piece) || /\.[a-z0-9]{1,5}$/i.test(piece);
+    const looksLikePath = /[\\/]/.test(piece) || /^\.\.?$/.test(piece) || /\.[a-z0-9]{1,5}$/i.test(piece) || existsFrom(piece, cwd);
     if (!isProtected(norm(piece)) && !(looksLikePath && piece.length < 1024 && isProtected(norm(realLocation(piece, cwd))))) continue;
     // Walk up from the named path to the nearest folder that exists: a file's folder, a glob's
     // folder, or the folder of a path followed by code.
@@ -467,11 +631,12 @@ function walkFiles(dir, out) {
   return out;
 }
 
-/** The snapshot file names for one tool call (its id from the hook input, else a random one). */
+/** The snapshot file name for one tool call: its id from the hook input, cleaned; '' when there is none. */
 function snapId(callId) {
-  const clean = String(callId || '').replace(/[^A-Za-z0-9_-]/g, '').slice(0, 80);
-  return clean || crypto.randomBytes(8).toString('hex');
+  return String(callId || '').replace(/[^A-Za-z0-9_-]/g, '').slice(0, 80);
 }
+// The session of the call being decided (recorded with its copy, for people reading it).
+let sessionIdNow = null;
 
 /**
  * Copy every file under every named company folder (all depths), for post.js to compare after
@@ -482,9 +647,12 @@ function snapshotFolders(full, cwd, inFolder, callId) {
   if (!dirs.length) return null;
   // A folder inside another named folder is already covered by it.
   dirs = dirs.filter((d) => !dirs.some((o) => o !== d && norm(d).startsWith(norm(o).replace(/\/?$/, '/'))));
+  // Only the post hook of THIS call processes a copy, so a call without an id would leave a copy
+  // nobody checks: refused before it runs (design note, I1).
   const id = snapId(callId);
+  if (!id) return 'This command touches the company files but arrived without a call id, so what it does could not be checked afterwards. Try again.';
   const backupDir = path.join(os.tmpdir(), 'glowming-snap-' + id + '.d');
-  const manifest = { cwd: path.resolve(cwd || process.cwd()), backupDir, created: Date.now(), dirs: [] };
+  const manifest = { callId: id, sessionId: sessionIdNow, cwd: path.resolve(cwd || process.cwd()), backupDir, created: Date.now(), dirs: [] };
   let total = 0;
   let n = 0;
   try {
@@ -521,8 +689,8 @@ function isTextFile(np) {
 }
 
 /** May a NEW file appear at p? Null = yes, else the reason (the same rules as the file tools). */
-function checkNewFile(p, cwd) {
-  return checkWrite('Write', { file_path: p, content: '' }, cwd, { exists: false, current: null });
+function checkNewFile(p, cwd, content) {
+  return checkWrite('Write', { file_path: p, content: typeof content === 'string' ? content : '' }, cwd, { exists: false, current: null });
 }
 
 // Servers whose actions change nothing in Glowming's own systems (owner ruling: Anton renders on Magnific).
@@ -537,15 +705,20 @@ function stringsIn(v, out) {
 }
 
 /** Decide one connector (MCP) call. */
-function checkMcp(tool, input, cwd) {
+function checkMcp(tool, input, cwd, mode) {
   // mcp__<server>__<action>: the server says WHOSE system it is, the action says what it does.
   const parts = tool.toLowerCase().split('__');
   const server = parts.length > 2 ? parts.slice(1, -1).join('__') : '';
   const act = parts[parts.length - 1];
+  const strings = stringsIn(input, []);
+  // A bare name that exists from the session folder ('.', a junction) is a path too (Codex code r2).
+  const looksLikePath = (s) => /[\\/]/.test(s) || /\.[a-z0-9]{1,5}$/i.test(s) || existsFrom(s, cwd);
+  const touches = () => strings.some((s) => isProtected(norm(s)) || (looksLikePath(s) && s.length < 1024 && isProtected(norm(realLocation(s, cwd)))));
+  // CAMPAIGN (no identity): only a call whose arguments name or lead into a company folder is judged.
+  if (mode === 'campaign' && !touches()) return null;
   if (/(delete|trash|remove|move|rename|purge|empty)/.test(act)) {
     return 'Deleting, moving or renaming through a connector is not allowed from this Claude. Ask Riaan\'s side if something must go.';
   }
-  const strings = stringsIn(input, []);
   if (!READ_ACTION.test(act) && BANNED_CLAIMS.test(strings.join(NL))) {
     return 'That request contains a weight-loss, detox, appetite, cure or "clinically proven" claim, which is never allowed. Remove it.';
   }
@@ -564,39 +737,58 @@ function checkMcp(tool, input, cwd) {
   }
   // Any other server: a non-read call whose arguments name a company folder, or a path that
   // RESOLVES into one from the session folder, is judged like a file write and refused.
-  const looksLikePath = (s) => /[\\/]/.test(s) || /\.[a-z0-9]{1,5}$/i.test(s);
-  if (strings.some((s) => isProtected(norm(s)) || (looksLikePath(s) && s.length < 1024 && isProtected(norm(realLocation(s, cwd)))))) {
+  if (touches()) {
     return 'That connector call would touch the company folders. Use the campaign skill\'s checked steps instead.';
   }
   return null;
 }
 
-function decide(event) {
+/** Decide one tool call. `id` (from identity()) may be passed in; it is read here otherwise. */
+function decide(event, id) {
+  const who = id || identity();
+  if (who.mode === 'off') return null; // Riaan: nothing here runs
   const tool = String(event.tool_name || '');
   const input = event.tool_input || {};
   const cwd = event.cwd || process.cwd();
-  if (/^(Write|Edit|MultiEdit|NotebookEdit)$/.test(tool)) return checkWrite(tool, input, cwd);
-  if (tool.startsWith('mcp__')) return checkMcp(tool, input, cwd);
-  if (typeof input.command === 'string') return checkBash(input, cwd, event.tool_use_id);
+  sessionIdNow = event.session_id || null;
+  if (/^(Write|Edit|MultiEdit|NotebookEdit)$/.test(tool)) {
+    const given = input.file_path || input.notebook_path || '';
+    if (given) {
+      const raw = realLocation(given, cwd);
+      if (isSettingsFile(raw)) { const t = checkSettingsWrite(tool, input, raw); if (t) return t; }
+    }
+    return checkWrite(tool, input, cwd);
+  }
+  if (tool.startsWith('mcp__')) return checkMcp(tool, input, cwd, who.mode);
+  if (typeof input.command === 'string') return checkBash(input, cwd, event.tool_use_id, who.mode);
   return null;
 }
 
 /** Tests only (their own process): stand in for the owner's code folder. */
 function setDevRootsForTests(roots) { testRoots = roots; }
+/** Tests only: stand in for this machine's OS account and name ({ user, host }, lower-case); false = unreadable; null = the real one. */
+function setMachineForTests(m) { testMachine = m; }
+/** Tests only: stand in for Node's os module in the machine lookup ({ userInfo, hostname }), or null. */
+function setOsForTests(o) { testOs = o; }
 
-module.exports = { decide, checkWrite, checkNewFile, isTextFile, norm, sha1, walkFiles, snapId, CALENDAR, BANNED_CLAIMS, setDevRootsForTests };
+module.exports = { decide, identity, recordIdentity, checkWrite, checkNewFile, isTextFile, isProtected, realLocation, norm, sha1, walkFiles, snapId, CALENDAR, BANNED_CLAIMS, setDevRootsForTests, setMachineForTests, setOsForTests };
 
 if (require.main === module) {
+  // Who is working is read BEFORE the tool call is parsed, so Riaan never meets even the
+  // "could not read the tool call" refusal (design note round 8, finding 5).
+  const id = identity();
+  recordIdentity('guard', id);
   let buf = '';
   process.stdin.setEncoding('utf8');
   process.stdin.on('data', (c) => { buf += c; });
   process.stdin.on('end', () => {
+    if (id.mode === 'off') process.exit(0);
     let event;
     try { event = JSON.parse(buf || '{}'); } catch (e) {
       process.stderr.write('glowming-campaign guard: could not read the tool call, so it was blocked to be safe.');
       process.exit(2);
     }
-    const reason = decide(event);
+    const reason = decide(event, id);
     if (reason) { process.stderr.write('Blocked by the Glowming campaign guard: ' + reason); process.exit(2); }
     process.exit(0);
   });

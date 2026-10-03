@@ -20,8 +20,22 @@ const zlib = require('zlib');
 
 const NL = String.fromCharCode(10);
 const guard = require(process.env.GUARD_PATH || './guard.js');
-const { decide } = guard;
 const post = require(process.env.POST_PATH || './post.js');
+// Sections 1-6 run as Anton in his Cowork (the FULL guard). The tests may themselves run inside
+// Riaan's session, whose own address would turn the guard off; section 7 tests who is who.
+process.env.CLAUDE_CODE_USER_EMAIL = 'anton@riven.global';
+process.env.CLAUDE_CODE_ENTRYPOINT = 'local-agent';
+// Every call carries a tool_use_id, as Claude Code sends one; post.js checks only that call's copy.
+let callSeq = 0;
+let lastId = null;
+const issued = [];
+function decide(ev, id) {
+  const e = ev.tool_use_id ? ev : Object.assign({}, ev, { tool_use_id: 'toolu_t' + (++callSeq) });
+  lastId = e.tool_use_id;
+  issued.push(lastId);
+  return guard.decide(e, id);
+}
+const verify = () => post.verifyAll(lastId);
 const calendarLinks = require(path.join(__dirname, 'calendar-links.js'));
 
 /** A minimal .xlsx (stored zip): shared strings plus sheet1 with one cell per string in column A. */
@@ -95,6 +109,14 @@ const root = fs.mkdtempSync(path.join(os.tmpdir(), 'gc-guard-'));
 // Removed however the run ends, a failed assertion included (every negative control ends one early).
 process.on('exit', () => {
   try { process.chdir(os.tmpdir()); fs.rmSync(root, { recursive: true, force: true }); } catch (e) { /* best effort */ }
+  // A run cut short (a negative control) must not leave this run's copies for the next one; '' is
+  // the name a copy would get under a mutation that drops the call-id rule.
+  for (const id of issued.concat([''])) {
+    try {
+      fs.rmSync(path.join(os.tmpdir(), 'glowming-snap-' + guard.snapId(id) + '.json'), { force: true });
+      fs.rmSync(path.join(os.tmpdir(), 'glowming-snap-' + guard.snapId(id) + '.d'), { recursive: true, force: true });
+    } catch (e) { /* best effort */ }
+  }
 });
 const base = path.join(root, 'Riven Online Software Services');
 const shared = path.join(base, 'ROSS - Documents', '_Riven-Claude', 'Glowming Summer Campaign');
@@ -103,6 +125,9 @@ const advert = path.join(camp, '01 Ready to post', 'Step 2 - Already know Glowmi
 const plans = path.join(camp, '05 Plans and approvals');
 const rulesDir = path.join(camp, '06 Competition rules');
 for (const d of [path.join(shared, 'work', 'anton'), advert, plans, rulesDir]) fs.mkdirSync(d, { recursive: true });
+// Displaced versions go here, not into the real home folder.
+const recoveryDir = path.join(root, 'recovery');
+post.setRecoveryRootForTests(recoveryDir);
 // Every case runs as Anton does: launched from, and standing in, a folder that is not a git checkout.
 // The tests may themselves run from a Claude session launched inside a code repository, which the
 // guard would treat as a developer's checkout (section 5), so that is cleared here.
@@ -167,7 +192,7 @@ function shell(why, ev, effect, expect, after) {
   let result = 'blocked';
   if (decision === null) {
     effect();
-    result = post.verifyAll() === null ? 'kept' : 'undone';
+    result = verify() === null ? 'kept' : 'undone';
   }
   if (result === 'undone') {
     for (const k of Object.keys(files)) assert.ok(same(k), why + ': ' + k + ' must be exactly as before after the repair');
@@ -270,12 +295,12 @@ shell('a delete the text did not reveal', B('python tidy.py ' + JSON.stringify(a
   // The repair itself, checked byte for byte.
   decide(B('python fix.py "' + advert + '"'));
   fs.writeFileSync(files.png, 'tampered');
-  assert.notStrictEqual(post.verifyAll(), null, 'tampering is reported'); passed++;
+  assert.notStrictEqual(verify(), null, 'tampering is reported'); passed++;
   assert.ok(same('png'), 'the picture is back exactly'); passed++;
   reset();
   decide(B('python fix.py "' + advert + '"'));
   fs.rmSync(files.png);
-  assert.notStrictEqual(post.verifyAll(), null, 'a deletion is reported'); passed++;
+  assert.notStrictEqual(verify(), null, 'a deletion is reported'); passed++;
   assert.ok(fs.existsSync(files.png) && same('png'), 'the deleted picture is back exactly'); passed++;
   reset();
 }
@@ -314,7 +339,7 @@ for (const k of ['calendar']) ORIGINAL[k] = fs.readFileSync(files[k]);
 {
   decide(B('python cal.py "' + files.calendar + '"'));
   makeXlsx(files.calendar, ['Mon 5 Oct', LINK, 'Shop'], [{ ref: 'A1', target: LINK }]);
-  assert.notStrictEqual(post.verifyAll(), null, 'a hyperlink moved to another cell is caught'); passed++;
+  assert.notStrictEqual(verify(), null, 'a hyperlink moved to another cell is caught'); passed++;
   assert.ok(same('calendar'), 'the calendar with its hyperlink in place is back'); passed++;
   reset();
 }
@@ -353,7 +378,7 @@ shell('a calendar save that adds a plain cell (benign)', B('python cal.py "' + f
   ORIGINAL.calendar = fs.readFileSync(files.calendar);
   decide(B('python cal.py "' + files.calendar + '"'));
   makeXlsx(files.calendar, ['Mon 5 Oct', LINK, 'Lose weight fast', 'Lose weight fast']);
-  assert.notStrictEqual(post.verifyAll(), null, 'an existing claim may not be copied into a new cell'); passed++;
+  assert.notStrictEqual(verify(), null, 'an existing claim may not be copied into a new cell'); passed++;
   assert.ok(same('calendar'), 'the calendar is back'); passed++;
   reset();
 }
@@ -363,7 +388,7 @@ shell('a calendar save that adds a plain cell (benign)', B('python cal.py "' + f
   ORIGINAL.calendar = fs.readFileSync(files.calendar);
   decide(B('python cal.py "' + files.calendar + '"'));
   makeTwoSheets(files.calendar, { 'xl/worksheets/sheet1.xml': LINK, 'xl/worksheets/sheet2.xml': 'plain' }, ['xl/worksheets/sheet2.xml', 'xl/worksheets/sheet1.xml']);
-  assert.notStrictEqual(post.verifyAll(), null, 'a link moved to another sheet by swapping sheets is caught'); passed++;
+  assert.notStrictEqual(verify(), null, 'a link moved to another sheet by swapping sheets is caught'); passed++;
   assert.ok(same('calendar'), 'the calendar is back'); passed++;
   reset();
 }
@@ -400,7 +425,7 @@ reset();
   decide(B('python cal.py "' + files.calendar + '"'));
   const sheetXml = '<?xml version="1.0"?><worksheet><sheetData><row r="1"><c r="A1" t="s"><v>0</v></c></row><row r="2"><c r="A2" t="s"><v>1</v></c></row><row r="3"><c r=\'A3\' t=\'inlineStr\'><is><t>detox</t></is></c></row></sheetData></worksheet>';
   writeZip(files.calendar, [['[Content_Types].xml', '<?xml version="1.0"?><Types/>'], ['xl/sharedStrings.xml', '<?xml version="1.0"?><sst><si><t>Mon 5 Oct</t></si><si><t>' + LINK.replace(/&/g, '&amp;') + '</t></si></sst>'], ['xl/worksheets/sheet1.xml', sheetXml]]);
-  assert.notStrictEqual(post.verifyAll(), null, 'a claim in a single-quoted cell is caught'); passed++;
+  assert.notStrictEqual(verify(), null, 'a claim in a single-quoted cell is caught'); passed++;
   assert.ok(same('calendar'), 'the calendar is back'); passed++;
   reset();
 }
@@ -490,6 +515,16 @@ launchedIn(devRepo, () => {
   shell('dev: a script that overwrites a caption in the advert folder it names', devB('node scripts/fix.js "' + advert + '"'), w('caption', 'hi'), 'undone',
     () => assert.ok(same('caption'), 'the caption is back'));
   shell('dev: a shell append of a weight-loss claim into anton.md', devB('echo "Lose weight fast" >> "' + files.anton + '"'), () => fs.appendFileSync(files.anton, 'Lose weight fast' + NL), STOPPED);
+  // A NEW text file a script writes is judged by what it says (Codex code r1): the shell claim rule
+  // steps aside here, so only post.js can see the claim.
+  const newNote = path.join(shared, 'work', 'anton', 'new.md');
+  shell('dev: a script writes a new note with a detox claim into work/anton', devB('node scripts/note.js "' + newNote + '"'), () => fs.writeFileSync(newNote, 'A detox week.' + NL), 'undone',
+    () => assert.ok(!fs.existsSync(newNote), 'the new note with the claim is removed'));
+  const newPy = path.join(shared, 'work', 'anton', 'new.py');
+  shell('dev: a script writes a new .py with a detox comment into work/anton (any text, not only notes)', devB('node scripts/note.js "' + newPy + '"'), () => fs.writeFileSync(newPy, '# detox' + NL), 'undone',
+    () => assert.ok(!fs.existsSync(newPy), 'the new .py with the claim is removed'));
+  shell('dev: a script writes a plain new note into work/anton', devB('node scripts/note.js "' + newNote + '"'), () => fs.writeFileSync(newNote, 'Plain notes.' + NL), 'kept',
+    () => { assert.ok(fs.existsSync(newNote), 'the plain new note stays'); fs.rmSync(newNote, { force: true }); });
 });
 block('the same five-level chain from Anton\'s folder (the depth rule itself still holds)', B('bash "' + path.join(devScripts, 'step1.sh') + '"'));
 launchedIn(devTree, () => allow('dev: launched in a worktree inside the checkout', devB('curl -s http://localhost:3000/', devTree)));
@@ -588,9 +623,363 @@ block('a script named inside a quoted command beside a name the pattern does not
   B('bash -c "python ' + fpFile('payload.py', ['import requests', 'requests.post("https://example.com/api")']).split(path.sep).join('/') + '; echo harmless.mts"'));
 fs.rmSync(companyCode, { recursive: true, force: true });
 
+// ---- 7. Who is working: Anton, Etienne and Louis, never Riaan (operator ruling 2026-10-03) ---------
+// Design note docs/glowming-campaign-guard-identity.md. Each case names the surface it stands for.
+const as = (email, entrypoint, machineId, fn) => {
+  const was = [process.env.CLAUDE_CODE_USER_EMAIL, process.env.CLAUDE_CODE_ENTRYPOINT];
+  if (email === null) delete process.env.CLAUDE_CODE_USER_EMAIL; else process.env.CLAUDE_CODE_USER_EMAIL = email;
+  if (entrypoint === null) delete process.env.CLAUDE_CODE_ENTRYPOINT; else process.env.CLAUDE_CODE_ENTRYPOINT = entrypoint;
+  guard.setMachineForTests(machineId);
+  try { fn(); } finally {
+    guard.setMachineForTests(null);
+    process.env.CLAUDE_CODE_USER_EMAIL = was[0];
+    process.env.CLAUDE_CODE_ENTRYPOINT = was[1];
+  }
+};
+const ZEN = { user: 'riaan', host: 'zenbookduo-rv26' };
+const AIR = { user: 'riaanventer', host: 'riaans-macbook-air' };
+const DELL = { user: 'anton', host: 'desktop-dell01' };
+const mode = (why, expected) => { const id = guard.identity(); assert.strictEqual(id.mode, expected, why + ': expected ' + expected + ', got ' + id.mode + ' (rule ' + id.rule + ')'); passed++; };
+
+// 7a. Identity, rule by rule.
+as('riaan@riven.co.za', 'claude-desktop', DELL, () => mode('Riaan in the desktop Code tab (even on another machine)', 'off'));
+as('RIAAN@Riven.co.za', 'local-agent', DELL, () => mode('Riaan in Cowork, address in capitals', 'off'));
+as('riaan.venter@riven.co.za', 'claude-desktop', DELL, () => mode('Riaan\'s second address', 'off'));
+as('anton@riven.global', 'local-agent', ZEN, () => mode('Anton signed in to Cowork on Riaan\'s laptop: the account decides', 'full'));
+as('etienne@riven.global', 'claude-desktop', DELL, () => mode('Etienne in the desktop Code tab', 'full'));
+as('louis@glowming.co.za', 'local-agent', DELL, () => mode('Louis in Cowork', 'full'));
+as('someone@example.com', 'local-agent', DELL, () => mode('anyone else who is not Riaan', 'full'));
+as(null, 'cli', ZEN, () => mode('Riaan\'s plain CLI on the Zenbook: his account on his machine', 'off'));
+as(null, 'cli', AIR, () => mode('Riaan\'s plain CLI on the Air', 'off'));
+as('anton@riven.global', 'cli', ZEN, () => mode('an inherited address of unknown origin does not override Riaan\'s machine', 'off'));
+as(null, 'cli', { user: 'riaan', host: 'some-cloud-image' }, () => mode('the user name riaan on another machine is not Riaan\'s machine', 'campaign'));
+as(null, 'cli', { user: 'anton', host: 'zenbookduo-rv26' }, () => mode('another account on Riaan\'s machine', 'campaign'));
+as('riaan@riven.co.za', 'cli', DELL, () => mode('Riaan\'s address from another launcher (a cloud session)', 'off'));
+as('anton@riven.global', 'cli', DELL, () => mode('Anton\'s address from the plain CLI', 'full'));
+as('riaan@riven.co.za', null, DELL, () => mode('Riaan\'s address with no launcher named', 'off'));
+as(null, null, DELL, () => mode('no address and an unknown account', 'campaign'));
+as(null, null, false, () => mode('the account lookup failed: never an error, never off', 'campaign'));
+as('  ', 'local-agent', false, () => mode('a blank address counts as none', 'campaign'));
+as('riaan@riven.co.za.evil.com', 'local-agent', DELL, () => mode('an address that only starts like Riaan\'s', 'full'));
+// The real lookup (Node's os module stood in for): case, ".local", and each lookup throwing (Codex code r2).
+{
+  const withOs = (o, why, expected) => as(null, 'cli', null, () => {
+    guard.setOsForTests(o);
+    try { mode(why, expected); } catch (e) { assert.fail(why + ': the lookup threw (' + e.message + ')'); } finally { guard.setOsForTests(null); }
+  });
+  withOs({ userInfo: () => ({ username: 'Riaan' }), hostname: () => 'ZENBOOKDUO-RV26' }, 'the Windows lookup in its own capitals', 'off');
+  withOs({ userInfo: () => ({ username: 'riaanventer' }), hostname: () => 'Riaans-MacBook-Air.local' }, 'the Mac lookup with .local', 'off');
+  withOs({ userInfo: () => { throw new Error('no account entry'); }, hostname: () => 'x' }, 'the account lookup throwing', 'campaign');
+  withOs({ userInfo: () => ({ username: 'riaan' }), hostname: () => { throw new Error('no name'); } }, 'the machine name lookup throwing', 'campaign');
+}
+
+// 7b. Off: nothing is judged, for every kind of call that the full guard refuses.
+const RIAAN_ID = () => guard.identity();
+as('riaan@riven.co.za', 'claude-desktop', ZEN, () => {
+  const id = RIAAN_ID();
+  assert.strictEqual(decide(B('curl -s https://openrouter.ai/api/v1/chat'), id), null, 'off: a web request (Riaan\'s compliance gate)'); passed++;
+  assert.strictEqual(decide({ tool_name: 'mcp__ms365__outlook_send_mail', tool_input: {} }, id), null, 'off: an email send'); passed++;
+  assert.strictEqual(decide(B('node hooks/guard.js < x.json'), id), null, 'off: a command naming the guard\'s own files'); passed++;
+  assert.strictEqual(decide(B('rm "' + files.png + '"'), id), null, 'off: Riaan may delete a company file'); passed++;
+  assert.strictEqual(decide(W(files.riaan, 'Riaan writes his own file'), id), null, 'off: riaan.md'); passed++;
+  assert.strictEqual(decide(B('setx CLAUDE_CODE_USER_EMAIL x'), id), null, 'off: no tamper rule either'); passed++;
+  assert.ok(!fs.readdirSync(os.tmpdir()).some((f) => f === 'glowming-snap-' + lastId + '.json'), 'off: no copy is taken'); passed++;
+});
+
+// 7c. Campaign (no identity): only calls that touch the company folders are judged.
+as(null, null, DELL, () => {
+  const id = guard.identity();
+  assert.strictEqual(decide(B('curl -s https://example.com/'), id), null, 'campaign: a web request that touches no company folder'); passed++;
+  assert.strictEqual(decide({ tool_name: 'mcp__ms365__outlook_send_mail', tool_input: { to: 'x@example.com' } }, id), null, 'campaign: a send naming no company folder'); passed++;
+  assert.strictEqual(decide(B('rm /tmp/scratch.txt'), id), null, 'campaign: rm outside company folders'); passed++;
+  assert.strictEqual(decide(B('echo $CLAUDE_CODE_USER_EMAIL'), id), null, 'campaign: naming the identity variable is not refused'); passed++;
+  assert.notStrictEqual(decide(B('rm "' + files.png + '"'), id), null, 'campaign: rm a company file'); passed++;
+  assert.notStrictEqual(decide(B('curl -o "' + files.png + '" https://example.com/x.png'), id), null, 'campaign: a web request writing into a company folder'); passed++;
+  assert.notStrictEqual(decide(B('curl -s localhost', advert), id), null, 'campaign: a command run inside a company folder'); passed++;
+  // A neutral name that leads into a company folder is in it (Codex code r1).
+  const advertAlias = path.join(antonHome, 'adverts-link');
+  fs.symlinkSync(advert, advertAlias, 'junction');
+  assert.notStrictEqual(decide(B('curl -s localhost', advertAlias), id), null, 'campaign: a command run in a junction that leads into a company folder'); passed++;
+  assert.ok(post.run({ tool_name: 'Write', tool_input: { file_path: path.join(advertAlias, 'notes.txt'), content: 'token = abcdef123' }, tool_use_id: 'toolu_w' + (++callSeq), hook_event_name: 'PostToolUse', cwd: antonHome }, id).stdout.includes('password or secret'),
+    'campaign: a write through a junction into a company folder is warned about'); passed++;
+  fs.rmSync(path.join(advert, 'notes.txt'), { force: true });
+  // A bare name with no slash and no extension is a path too when it exists (Codex code r2).
+  const snapOf = (cid) => fs.existsSync(path.join(os.tmpdir(), 'glowming-snap-' + cid + '.json'));
+  assert.strictEqual(decide(B('cp scratch.txt adverts-link', antonHome), id), null, 'campaign: a copy into a junction named with no extension runs'); passed++;
+  assert.ok(snapOf(lastId), 'campaign: ... with its company folder copied first'); passed++;
+  verify();
+  assert.notStrictEqual(decide({ tool_name: 'mcp__filesystem__delete_file', tool_input: { path: '.' }, cwd: advert }, id), null, 'campaign: a connector delete of "." inside a company folder'); passed++;
+  assert.notStrictEqual(decide({ tool_name: 'mcp__filesystem__delete_file', tool_input: { path: 'adverts-link' }, cwd: antonHome }, id), null, 'campaign: a connector delete of a bare junction name'); passed++;
+  const touchPy = path.join(antonHome, 'touch-' + process.pid + '.py');
+  fs.writeFileSync(touchPy, 'open(r"' + files.riaan + '", "w").write("x")' + NL);
+  assert.strictEqual(decide(B('python "' + touchPy + '"'), id), null, 'campaign: a script naming a company file is let run'); passed++;
+  fs.writeFileSync(files.riaan, 'x');
+  assert.notStrictEqual(verify(), null, 'campaign: ... and its change is checked by its own copy'); passed++;
+  assert.ok(same('riaan'), 'campaign: riaan.md put back'); passed++;
+  reset();
+  fs.rmSync(touchPy, { force: true });
+  assert.notStrictEqual(decide({ tool_name: 'mcp__ms365__sharepoint_upload_file', tool_input: { path: files.plan } }, id), null, 'campaign: a connector upload naming a company file'); passed++;
+  assert.notStrictEqual(decide(W(files.riaan, 'x'), id), null, 'campaign: a file-tool write to riaan.md'); passed++;
+  assert.strictEqual(decide(W(path.join(os.tmpdir(), 'draft.txt'), 'x'), id), null, 'campaign: a scratch file'); passed++;
+  assert.notStrictEqual(decide(B('claude plugin disable glowming-campaign@riven-exec'), id), null, 'campaign: switching the plugin off'); passed++;
+});
+
+// Full mode: the same bare junction name gets the copy (Codex code r2).
+{
+  const alias2 = path.join(antonHome, 'adverts2');
+  fs.symlinkSync(advert, alias2, 'junction');
+  assert.strictEqual(decide(B('cp scratch.txt adverts2', antonHome)), null, 'full: a copy into a bare junction name runs'); passed++;
+  assert.ok(fs.existsSync(path.join(os.tmpdir(), 'glowming-snap-' + lastId + '.json')), 'full: ... with its company folder copied first'); passed++;
+  verify();
+}
+
+// 7d. The tamper list (FULL).
+const claudeDir = path.join(antonHome, '.claude');
+fs.mkdirSync(claudeDir, { recursive: true });
+const settingsFile = path.join(claudeDir, 'settings.json');
+const settingsText = JSON.stringify({ enabledPlugins: { 'glowming-campaign@riven-exec': true }, disableAllHooks: false, env: { CLAUDE_CODE_USER_EMAIL: 'anton@riven.global' } }, null, 2);
+fs.writeFileSync(settingsFile, settingsText);
+const slash = (p) => p.split(path.sep).join('/');
+block('tamper: echo the identity variable', B('echo $CLAUDE_CODE_USER_EMAIL'));
+block('tamper: setx the identity variable', B('setx CLAUDE_CODE_USER_EMAIL riaan@riven.co.za'));
+block('tamper: the launcher variable', B('export CLAUDE_CODE_ENTRYPOINT=claude-desktop'));
+block('tamper: a config folder of its own', B('export CLAUDE_CONFIG_DIR=/tmp/cfg'));
+block('tamper: safe mode by variable', B('export CLAUDE_CODE_SAFE_MODE=1'));
+block('tamper: disableAllHooks from the shell', B('node -p "1" && echo disableAllHooks'));
+block('tamper: claude --bare', B('claude --bare -p "hello"'));
+block('tamper: claude --safe-mode', B('claude --safe-mode -p "hello"'));
+block('tamper: claude with other settings', B('claude -p "hi" --settings /tmp/s.json'));
+block('tamper: claude plugin uninstall', B('claude plugin uninstall glowming-campaign@riven-exec'));
+block('tamper: a quoted Windows path to claude.exe', { tool_name: 'PowerShell', tool_input: { command: '& "' + path.join('C:', 'Tools', 'claude.exe') + '" plugin disable glowming-campaign@riven-exec' } });
+block('tamper: a quoted POSIX path to claude', B('"/usr/local/bin/claude" plugin disable glowming-campaign@riven-exec'));
+block('tamper: process substitution inside a read', B('cat ~/.claude/settings.json <(cp /tmp/clean.json ~/.claude/settings.json)'));
+block('tamper: input redirection into a read', B('cat < ~/.claude/settings.json'));
+{
+  // A plain read of a script runs nothing, so the script's text is not judged as run (Codex code r1).
+  const ex = path.join(antonHome, 'example.py');
+  fs.writeFileSync(ex, 'print("claude plugin disable glowming-campaign@riven-exec")' + NL);
+  allow('tamper: one plain read of settings and a script that only mentions a plugin command', B('cat ~/.claude/settings.json "' + slash(ex) + '"'));
+  fs.rmSync(ex, { force: true });
+}
+allow('tamper: one plain read of the settings file', B('cat "' + slash(settingsFile) + '"'));
+block('tamper: a redirect over the settings file', B('cat /tmp/clean.json > "' + slash(settingsFile) + '"'));
+block('tamper: a read and a copy joined by a single &', B('cat ~/.claude/settings.json & cp /tmp/clean.json ~/.claude/settings.json'));
+block('tamper: cd into .claude, then a relative settings.json', B('cd ~/.claude && cp /tmp/clean.json settings.json'));
+block('tamper: a copy over .claude.json', B('cp /tmp/x.json ~/.claude.json'));
+block('tamper: rg --pre over the settings file', B('rg --pre ./x.sh hooks ~/.claude/settings.json'));
+block('tamper: renaming the .claude folder', { tool_name: 'PowerShell', tool_input: { command: 'Rename-Item -LiteralPath "' + claudeDir + '" -NewName .claude.backup' } });
+block('tamper: deleting the .claude folder', B('rm -rf ~/.claude'));
+const setPy = path.join(antonHome, 'set-' + process.pid + '.py');
+fs.writeFileSync(setPy, 'import json' + NL + 'p = "settings.json"' + NL + 'json.dump({}, open(p, "w"))' + NL);
+block('tamper: a script that names a settings file', B('python "' + setPy + '"'));
+fs.rmSync(setPy, { force: true });
+allow('tamper: a project file that only mentions settings in its name', B('cat my-settings.json.bak'));
+
+// 7e. Settings files written by the file tools (judged on the parsed result).
+block('settings: disableAllHooks set true by Write', W(settingsFile, settingsText.replace('"disableAllHooks": false', '"disableAllHooks": true')));
+block('settings: disableAllHooks false -> true by Edit', E(settingsFile, '"disableAllHooks": false', '"disableAllHooks": true'));
+block('settings: the plugin switched off', E(settingsFile, '"glowming-campaign@riven-exec": true', '"glowming-campaign@riven-exec": false'));
+block('settings: the plugin entry removed', W(settingsFile, JSON.stringify({ enabledPlugins: {}, disableAllHooks: false, env: { CLAUDE_CODE_USER_EMAIL: 'anton@riven.global' } })));
+block('settings: a new settings file that switches the plugin off', W(path.join(antonHome, 'proj2', '.claude', 'settings.json'), JSON.stringify({ enabledPlugins: { 'glowming-campaign@riven-exec': false } })));
+block('settings: the identity value changed', E(settingsFile, 'anton@riven.global', 'riaan@riven.co.za'));
+block('settings: safe mode added to env', W(settingsFile, settingsText.replace('"env": {', '"env": { "CLAUDE_CODE_SAFE_MODE": "1",')));
+{
+  // On a settings file with nothing the guard cares about, so only the "not JSON" rule can refuse it.
+  const plain = path.join(antonHome, 'proj3', '.claude', 'settings.json');
+  fs.mkdirSync(path.dirname(plain), { recursive: true });
+  fs.writeFileSync(plain, JSON.stringify({ model: 'opus' }));
+  block('settings: a result that is not JSON', E(plain, '"model"', '"model",,'));
+}
+block('settings: a notebook tool aimed at a settings file', { tool_name: 'NotebookEdit', tool_input: { notebook_path: settingsFile, new_source: 'x' } });
+allow('settings: another plugin turned on', E(settingsFile, '"glowming-campaign@riven-exec": true', '"glowming-campaign@riven-exec": true, "pulse@riven-exec": true'));
+allow('settings: a new settings file with an ordinary setting', W(path.join(antonHome, 'proj', '.claude', 'settings.local.json'), JSON.stringify({ model: 'opus' })));
+block('settings: .claude.json anywhere', W(path.join(antonHome, '.claude.json'), JSON.stringify({ disableAllHooks: true })));
+allow('settings: VS Code\'s settings.json (with comments) is not Claude\'s', W(path.join(antonHome, 'proj', '.vscode', 'settings.json'), '// editor' + NL + '{ "a": 1 }'));
+{
+  const cfg = path.join(antonHome, 'cfg');
+  fs.mkdirSync(cfg, { recursive: true });
+  process.env.CLAUDE_CONFIG_DIR = cfg;
+  try { block('settings: settings.json in the CLAUDE_CONFIG_DIR folder', W(path.join(cfg, 'settings.json'), JSON.stringify({ disableAllHooks: true }))); }
+  finally { delete process.env.CLAUDE_CONFIG_DIR; }
+}
+
+// 7f. A command that needs a copy but carries no call id is refused (nobody would check it).
+assert.notStrictEqual(guard.decide(B('python fix.py "' + advert + '"')), null, 'no call id: a command touching a company folder is refused'); passed++;
+assert.strictEqual(guard.decide(B('ls /tmp')), null, 'no call id: a command touching nothing is allowed'); passed++;
+
+// 7g. Copies: only the call's own copy is checked; old copies are cleared without putting back.
+{
+  decide(B('python a.py "' + advert + '"'), undefined);
+  const idA = lastId;
+  fs.writeFileSync(files.png, 'changed by someone else');
+  assert.strictEqual(post.verifyAll('toolu_other'), null, 'another call\'s check leaves this copy alone'); passed++;
+  assert.strictEqual(post.verifyAll(null), null, 'a check with no id restores nothing'); passed++;
+  assert.ok(fs.existsSync(path.join(os.tmpdir(), 'glowming-snap-' + idA + '.json')), 'the copy is still there for its own call'); passed++;
+  const manifestPath = path.join(os.tmpdir(), 'glowming-snap-' + idA + '.json');
+  const m = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
+  m.created = Date.now() - 7 * 60 * 60 * 1000;
+  fs.writeFileSync(manifestPath, JSON.stringify(m));
+  assert.strictEqual(post.verifyAll('toolu_other'), null, 'an expired copy is cleared quietly'); passed++;
+  assert.ok(!fs.existsSync(manifestPath), 'the expired copy is gone'); passed++;
+  assert.strictEqual(fs.readFileSync(files.png, 'utf8'), 'changed by someone else', 'and nothing was put back from it'); passed++;
+  reset();
+  // Its own call reporting after six hours does not put anything back either (Codex code r1).
+  decide(B('python a.py "' + advert + '"'));
+  const idL = lastId;
+  const lateManifest = path.join(os.tmpdir(), 'glowming-snap-' + idL + '.json');
+  const lm = JSON.parse(fs.readFileSync(lateManifest, 'utf8'));
+  lm.created = Date.now() - 7 * 60 * 60 * 1000;
+  fs.writeFileSync(lateManifest, JSON.stringify(lm));
+  fs.writeFileSync(files.png, 'changed later');
+  assert.strictEqual(post.verifyAll(idL), null, 'an expired copy is cleared when its own call reports late'); passed++;
+  assert.strictEqual(fs.readFileSync(files.png, 'utf8'), 'changed later', 'and nothing is put back from it'); passed++;
+  reset();
+}
+{
+  // A forbidden NEW file is kept before it is removed (Codex code r1).
+  decide(B('python make.py "' + rulesDir + '"'));
+  const stray = path.join(rulesDir, 'stray.md');
+  fs.writeFileSync(stray, 'the stray bytes');
+  assert.ok((verify() || '').includes(recoveryDir), 'the report names where the removed file is kept'); passed++;
+  assert.ok(!fs.existsSync(stray), 'the stray file is removed'); passed++;
+  const latest = fs.readdirSync(recoveryDir).map((d) => path.join(recoveryDir, d)).sort().pop();
+  const keptName = fs.readdirSync(latest).find((f) => f.endsWith('stray.md'));
+  assert.strictEqual(fs.readFileSync(path.join(latest, keptName), 'utf8'), 'the stray bytes', 'its bytes are kept'); passed++;
+  assert.strictEqual(JSON.parse(fs.readFileSync(path.join(latest, 'map.json'), 'utf8'))[keptName], stray, 'with the path it came from'); passed++;
+  reset();
+}
+{
+  // ... and when it cannot be kept, it is left, with its copy (Codex code r1).
+  const blocker2 = path.join(root, 'not-a-folder-2');
+  fs.writeFileSync(blocker2, 'x');
+  post.setRecoveryRootForTests(path.join(blocker2, 'sub'));
+  const stray = path.join(rulesDir, 'stray2.md');
+  try {
+    decide(B('python make.py "' + rulesDir + '"'));
+    const idN = lastId;
+    fs.writeFileSync(stray, 'x');
+    assert.ok((verify() || '').includes('NOT removed'), 'the report says the new file was not removed'); passed++;
+    assert.ok(fs.existsSync(stray), 'the new file is left'); passed++;
+    assert.ok(fs.existsSync(path.join(os.tmpdir(), 'glowming-snap-' + idN + '.json')), 'with its copy'); passed++;
+    post.setRecoveryRootForTests(recoveryDir);
+    post.verifyAll(idN);
+  } finally { post.setRecoveryRootForTests(recoveryDir); fs.rmSync(stray, { force: true }); reset(); }
+}
+{
+  // The displaced version is kept before the earlier one is put back.
+  decide(B('python fix.py "' + advert + '"'));
+  fs.writeFileSync(files.png, 'the displaced version');
+  const report = verify();
+  assert.ok(report && report.includes(recoveryDir), 'the report names where the displaced version is kept'); passed++;
+  assert.ok(same('png'), 'the earlier version is back'); passed++;
+  const kept = fs.readdirSync(recoveryDir).map((d) => path.join(recoveryDir, d));
+  const latest = kept.sort().pop();
+  const keptFile = fs.readdirSync(latest).find((f) => f.endsWith('A5-B story 9x16.png'));
+  assert.strictEqual(fs.readFileSync(path.join(latest, keptFile), 'utf8'), 'the displaced version', 'the displaced bytes are kept'); passed++;
+  assert.strictEqual(JSON.parse(fs.readFileSync(path.join(latest, 'map.json'), 'utf8'))[keptFile], files.png, 'with the path it came from'); passed++;
+  reset();
+}
+{
+  // If the displaced version cannot be kept, nothing is put back and the copy is left for a person.
+  const blocker = path.join(root, 'not-a-folder');
+  fs.writeFileSync(blocker, 'x');
+  post.setRecoveryRootForTests(path.join(blocker, 'sub'));
+  try {
+    decide(B('python fix.py "' + advert + '"'));
+    const idK = lastId;
+    fs.writeFileSync(files.png, 'cannot be kept');
+    const report = verify();
+    assert.ok(report && report.includes('NOT put back'), 'the report says it was not put back'); passed++;
+    assert.strictEqual(fs.readFileSync(files.png, 'utf8'), 'cannot be kept', 'the file is left as it is'); passed++;
+    assert.ok(fs.existsSync(path.join(os.tmpdir(), 'glowming-snap-' + idK + '.json')), 'the copy is left'); passed++;
+    post.setRecoveryRootForTests(recoveryDir);
+    assert.notStrictEqual(post.verifyAll(idK), null, 'a later check can still put it back'); passed++;
+    assert.ok(same('png'), 'and does'); passed++;
+  } finally { post.setRecoveryRootForTests(recoveryDir); reset(); }
+}
+
+// 7h. post.js run(): off returns at once; warnings are warnings.
+{
+  const full = { mode: 'full' };
+  const camp = { mode: 'campaign' };
+  const off = { mode: 'off' };
+  const fakeKey = 'sk-' + 'ant-' + 'a1B2c3D4e5F6g7H8i9J0k1L2m3N4';
+  const scratch = path.join(os.tmpdir(), 'scratch-' + process.pid + '.md');
+  const ev = (input, extra) => Object.assign({ tool_name: 'Write', tool_input: input, tool_use_id: 'toolu_w' + (++callSeq), hook_event_name: 'PostToolUse' }, extra || {});
+  const r1 = post.run(ev({ file_path: scratch, content: 'key: ' + fakeKey }), full);
+  assert.strictEqual(r1.code, 0, 'a warning never blocks'); passed++;
+  const out = JSON.parse(r1.stdout);
+  assert.ok(/key or access token/.test(out.systemMessage), 'the person is told'); passed++;
+  assert.strictEqual(out.hookSpecificOutput.hookEventName, 'PostToolUse', 'the event is named'); passed++;
+  assert.ok(/key or access token/.test(out.hookSpecificOutput.additionalContext), 'Claude is told'); passed++;
+  assert.ok(!r1.stdout.includes(fakeKey), 'the value is never repeated'); passed++;
+  assert.strictEqual(post.run(ev({ file_path: scratch, content: 'key: ' + fakeKey }), off).stdout, '', 'off: Riaan gets nothing'); passed++;
+  assert.strictEqual(post.run(ev({ file_path: scratch, content: 'key: ' + fakeKey }), camp).stdout, '', 'campaign: a scratch file is not checked'); passed++;
+  assert.ok(post.run(ev({ file_path: path.join(shared, 'work', 'anton', 'n.md'), content: 'key: ' + fakeKey }), camp).stdout.includes('key or access token'), 'campaign: a company file is'); passed++;
+  assert.strictEqual(post.run(ev({ file_path: scratch, content: 'key: ' + fakeKey }, { hook_event_name: 'PostToolUseFailure' }), full).stdout, '', 'a failed call never warns'); passed++;
+  assert.ok(post.run(ev({ file_path: scratch, content: 'card 4111 1111 1111 1111' }), full).stdout.includes('card or ID number'), 'a Luhn-valid card number'); passed++;
+  assert.strictEqual(post.run(ev({ file_path: scratch, content: 'order 4111 1111 1111 1112' }), full).stdout, '', 'a number that fails Luhn'); passed++;
+  assert.ok(post.run(ev({ file_path: scratch, content: 'password = hunter22' }), full).stdout.includes('password'), 'a password written out'); passed++;
+  assert.ok(post.run(ev({ file_path: scratch, content: 'password = abc' }), full).stdout.includes('password'), 'a short password written out (Codex code r1)'); passed++;
+  // Every warned shape and every file tool (Codex code r2). No output parses as no warning.
+  const safeJson = (s) => { try { return JSON.parse(s) || {}; } catch (e) { return {}; } };
+  const pk = '-----BEGIN ' + 'RSA PRIVATE KEY-----' + NL + 'MIIB' + NL;
+  const rpk = post.run(ev({ file_path: scratch, content: pk }), full);
+  assert.ok(rpk.code === 0 && (safeJson(rpk.stdout).systemMessage || "").includes('key or access token') && !rpk.stdout.includes('MIIB'), 'a private key block'); passed++;
+  const rme = post.run({ tool_name: 'MultiEdit', tool_input: { file_path: scratch, edits: [{ old_string: 'a', new_string: 'plain' }, { old_string: 'b', new_string: 'k ' + fakeKey }] }, tool_use_id: 'toolu_w' + (++callSeq), hook_event_name: 'PostToolUse' }, full);
+  assert.ok(rme.code === 0 && ((safeJson(rme.stdout).hookSpecificOutput || {}).additionalContext || "").includes('key or access token') && !rme.stdout.includes(fakeKey), 'a key in a MultiEdit'); passed++;
+  const rnb = post.run({ tool_name: 'NotebookEdit', tool_input: { notebook_path: scratch + '.ipynb', new_source: 'k = "' + fakeKey + '"' }, tool_use_id: 'toolu_w' + (++callSeq), hook_event_name: 'PostToolUse' }, full);
+  assert.ok(rnb.code === 0 && (safeJson(rnb.stdout).systemMessage || "").includes('key or access token') && !rnb.stdout.includes(fakeKey), 'a key in a NotebookEdit'); passed++;
+  assert.ok(post.run({ tool_name: 'Edit', tool_input: { file_path: scratch, old_string: 'a', new_string: 'helps you lose weight' }, tool_use_id: 'toolu_w' + (++callSeq), hook_event_name: 'PostToolUse' }, full).stdout.includes('claim'), 'a banned claim in an Edit'); passed++;
+  assert.strictEqual(post.run(ev({ file_path: scratch, content: 'Plain words, R1 299, 12 orders.' }), full).stdout, '', 'plain text, prices and figures'); passed++;
+  assert.strictEqual(post.run({ tool_name: 'Bash', tool_input: { command: 'echo ' + fakeKey }, tool_use_id: 'toolu_w' + (++callSeq), hook_event_name: 'PostToolUse' }, full).stdout, '', 'shell output is not a file-tool write'); passed++;
+  // Off leaves every copy alone, its own included.
+  decide(B('python fix.py "' + advert + '"'));
+  const idO = lastId;
+  fs.writeFileSync(files.png, 'x');
+  assert.strictEqual(post.run({ tool_name: 'Bash', tool_input: {}, tool_use_id: idO, hook_event_name: 'PostToolUse' }, off).code, 0, 'off: no check'); passed++;
+  assert.ok(fs.existsSync(path.join(os.tmpdir(), 'glowming-snap-' + idO + '.json')), 'off: the copy is not touched'); passed++;
+  assert.strictEqual(post.run({ tool_name: 'Bash', tool_input: {}, tool_use_id: idO, hook_event_name: 'PostToolUseFailure' }, full).code, 2, 'a failed command is still checked'); passed++;
+  assert.ok(same('png'), 'and put back'); passed++;
+  reset();
+}
+
+// 7i. The hook processes themselves: who is working is read before the tool call is parsed.
+{
+  const { spawnSync } = require('child_process');
+  const guardFile = require.resolve(process.env.GUARD_PATH || './guard.js');
+  const tmpEnv = path.join(root, 'hooktmp');
+  fs.mkdirSync(tmpEnv, { recursive: true });
+  const envFor = (email, entry) => Object.assign({}, process.env, { CLAUDE_CODE_USER_EMAIL: email, CLAUDE_CODE_ENTRYPOINT: entry, TEMP: tmpEnv, TMP: tmpEnv, TMPDIR: tmpEnv });
+  const g1 = spawnSync(process.execPath, [guardFile], { input: 'not json', env: envFor('riaan@riven.co.za', 'claude-desktop'), encoding: 'utf8' });
+  assert.strictEqual(g1.status, 0, 'off: even a tool call that cannot be read is let through'); passed++;
+  const rec = JSON.parse(fs.readFileSync(path.join(tmpEnv, 'glowming-guard-identity.json'), 'utf8'));
+  assert.ok(rec.mode === 'off' && rec.rule === '1.1' && rec.domain === 'riven.co.za' && !JSON.stringify(rec).includes('riaan@'), 'the identity record: mode, rule, domain only'); passed++;
+  const g2 = spawnSync(process.execPath, [guardFile], { input: 'not json', env: envFor('anton@riven.global', 'local-agent'), encoding: 'utf8' });
+  assert.strictEqual(g2.status, 2, 'full: a tool call that cannot be read is refused'); passed++;
+  const g3 = spawnSync(process.execPath, [guardFile], { input: JSON.stringify({ tool_name: 'Bash', tool_input: { command: 'curl https://example.com' }, tool_use_id: 'toolu_s1' }), env: envFor('riaan@riven.co.za', 'local-agent'), encoding: 'utf8' });
+  assert.strictEqual(g3.status, 0, 'off in Cowork: a web request goes through'); passed++;
+  const g4 = spawnSync(process.execPath, [guardFile], { input: JSON.stringify({ tool_name: 'Bash', tool_input: { command: 'curl https://example.com' }, tool_use_id: 'toolu_s2' }), env: envFor('anton@riven.global', 'local-agent'), encoding: 'utf8' });
+  assert.strictEqual(g4.status, 2, 'full in Cowork: refused'); passed++;
+  const postFile = require.resolve(process.env.POST_PATH || './post.js');
+  const keyEvent = JSON.stringify({ tool_name: 'Write', tool_input: { file_path: path.join(tmpEnv, 'n.md'), content: 'sk-' + 'ant-' + 'a1B2c3D4e5F6g7H8i9J0k1L2m3N4' }, tool_use_id: 'toolu_s3', hook_event_name: 'PostToolUse' });
+  const p1 = spawnSync(process.execPath, [postFile], { input: keyEvent, env: envFor('riaan@riven.co.za', 'claude-desktop'), encoding: 'utf8' });
+  assert.ok(p1.status === 0 && p1.stdout === '' && p1.stderr === '', 'post.js, off: silent'); passed++;
+  const p2 = spawnSync(process.execPath, [postFile], { input: keyEvent, env: envFor('anton@riven.global', 'local-agent'), encoding: 'utf8' });
+  assert.ok(p2.status === 0 && JSON.parse(p2.stdout).systemMessage.includes('key or access token'), 'post.js, full: the warning, exit 0'); passed++;
+}
+
+// 7j. The hook wiring: no prompt hook (it cannot tell who is working); post.js also after a failure.
+{
+  const hooks = JSON.parse(fs.readFileSync(path.join(__dirname, 'hooks.json'), 'utf8')).hooks;
+  const all = JSON.stringify(hooks);
+  assert.ok(!/"type":\s*"prompt"/.test(all), 'no prompt hook: it would run for Riaan too'); passed++;
+  assert.ok(JSON.stringify(hooks.PostToolUseFailure || []).includes('post.js'), 'post.js runs after a failed call'); passed++;
+}
+
 fs.rmSync(calPy, { force: true });
-// Nothing may be left behind for a later post.js run to act on.
-post.verifyAll();
+// Nothing may be left behind for a later post.js run to act on: every call's own check runs.
+for (const id of issued) post.verifyAll(id);
 assert.strictEqual(fs.readdirSync(os.tmpdir()).filter((f) => f.startsWith('glowming-snap-')).length, 0, 'no snapshot left behind'); passed++;
 process.chdir(os.tmpdir()); // Windows cannot remove the folder a process stands in
 fs.rmSync(root, { recursive: true, force: true });
