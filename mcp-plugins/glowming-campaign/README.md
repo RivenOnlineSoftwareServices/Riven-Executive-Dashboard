@@ -23,24 +23,23 @@ The Glowming Summer Campaign 2026 for owners who work with their own Claude (bui
   posting calendar is compared cell by cell for its tracking links, `hooks/calendar-links.js`); a new
   file where new files are not allowed is removed. So a shell command is judged by what it DID, not
   by guessing from its text.
-- **A developer's checkout** (the session was LAUNCHED, read from `CLAUDE_PROJECT_DIR`, inside a git
-  checkout under the owner's code folder, `<home drive>\repos` (`C:\repos`, fixed in the guard: nothing
-  a session writes can move it), that is neither a company folder nor a campaign repository nor a worktree of
-  one, and the shell is still inside it; never a checkout at the home folder or a drive root): the
-  blanket shell rules (no web requests, no hidden code, no deep or very large script chains, no claim
-  text in shell writes) step aside, because a code repository legitimately runs servers, local
-  requests and build scripts. Everything that protects the company files still applies there: file
-  tools, connectors, deletes, and the copy post.js checks. A campaign repository is known by its name,
-  its git remote, or a `.glowming-campaign` file at its root. The decision is recorded when the
-  session starts (a SessionStart hook, before Claude can act) in a folder the guard protects like
-  company files, and every later call needs that record too: removing a remote or a marker during a
-  session never turns the rules off, and a session with no record never counts. Owners working the campaign launch in
-  the synced folders or the campaign repository, which never count (Riaan, 2026-10-03).
+- **A developer's checkout**: the session was LAUNCHED (read from `CLAUDE_PROJECT_DIR`, fixed for the
+  session) strictly inside the owner's code folder, `<home drive>\repos` (`C:\repos`, a real folder,
+  fixed in the guard), by a path with no link or junction in it that neither says "campaign" nor names
+  a company folder, and the shell is still inside that launch folder. There the blanket shell rules (no
+  web requests, no hidden code, no deep or very large script chains, no claim text in shell writes)
+  step aside, because a code repository legitimately runs servers, local requests and build scripts.
+  Everything that protects the company files still applies there: file tools, connectors, deletes, and
+  the copy post.js checks. The decision uses only facts a session cannot change; reading git remotes,
+  marker files or session records was tried and dropped, because a session could rewrite each of them
+  (Codex and Claude review, 2026-10-03). Anton launches in the synced folders, which never count;
+  the campaign repository and the worktrees made inside it say "campaign" in their path (Riaan,
+  2026-10-03).
 - Everywhere: in a TypeScript script, a type-only import (`import type … from "node:http"`) is not a
   web request; a real import still is. Outside a developer's checkout every `eval(` and `exec(` is
   hidden code, a member call included (`b.exec(`, and a regex's `pattern.exec(`: a file's name does
   not say what runs it), and so is decoding a payload (`atob(`, a Buffer from base64 or hex,
-  `new Function(`). A campaign repository's remote is read as git itself resolves it.
+  `new Function(`).
 
 A second, content-only check (a prompt hook) reads the text AFTER it is written and only warns:
 secrets, and health claims Meta, TikTok or the ARB could reject. It never blocks; the owners
@@ -52,9 +51,9 @@ hooks/guard.controls.mjs`.
 folder the command does not name either; in a developer's checkout, nothing stops a web request
 (adverts, the shop, email), and a company file can be reached unseen through a script more than three
 levels down or over 500 KB, or through hidden code, when the command names no company folder (that
-mode exists for the owner's own code repositories); a campaign repository that neither its name, its
-remote nor a `.glowming-campaign` marker identifies; and the whole guard if Cowork does not run plugin
-hooks.
+mode exists for the owner's own code repositories); a campaign checkout under the code folder whose
+path does not say "campaign" (keep campaign clones and worktrees named so); and the whole guard if
+Cowork does not run plugin hooks.
 The campaign skill checks that on first use and records it in `anton.md`. SharePoint version history
 is the undo for every file.
 

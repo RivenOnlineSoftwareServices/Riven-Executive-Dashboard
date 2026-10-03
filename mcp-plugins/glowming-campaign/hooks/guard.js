@@ -27,9 +27,9 @@
  * Everything else inside the company folders is read-only. Files outside them
  * (temporary working files) are allowed.
  *
- * A developer's checkout (devCheckout: the session was LAUNCHED inside a git working tree under the
- * owner's code folder, <home drive>\repos, that is neither a company folder nor a
- * campaign repository, and the shell is still inside it): the blanket
+ * A developer's checkout (devCheckout: the session was LAUNCHED strictly inside the owner's code
+ * folder, <home drive>\repos, by a path with no link in it that neither says campaign nor names a
+ * company folder, and the shell is still inside that launch folder): the blanket
  * shell rules (no web requests, no hidden code, no deep or very large script chains, no claim text
  * in shell writes) step aside there; everything that protects the company files still applies.
  *
@@ -38,14 +38,13 @@
  * developer's checkout, nothing stops a web request (adverts, the shop, email), and a
  * company file can be reached unseen through a script more than three levels down or
  * over 500 KB, or through hidden code, when the command names no company folder;
- * a campaign repository that neither its name, its remote nor a .glowming-campaign
- * marker identifies counts as a developer's checkout; anything if Cowork does not run
+ * a campaign checkout under the code folder whose path does not say campaign counts as
+ * a developer's checkout; anything if Cowork does not run
  * plugin hooks at all (the skills' own rules then apply, and the campaign skill runs
  * a canary to find out).
  */
 'use strict';
 
-const childProcess = require('child_process');
 const crypto = require('crypto');
 const fs = require('fs');
 const os = require('os');
@@ -313,17 +312,14 @@ function scriptsRun(cmd, cwd) {
   return { text, netText, shellText, unreadable, tooDeep };
 }
 
-// Campaign work: a repository whose path, main repository's path or remote (as git resolves it) says
-// so, or one that carries the marker file at its root (for a campaign repository named otherwise).
+// Campaign work under the code folder is known by its path (the campaign repository, and the worktrees
+// made inside it). Only the path: it is the one thing a session cannot change (see devCheckout).
 const CAMPAIGN_REPO = /campaign/i;
-const CAMPAIGN_MARKER = '.glowming-campaign';
 
 /**
  * The folder that holds the owner's code repositories: `<home drive>\repos` (C:\repos on the owner's
  * machine), fixed in this file. Nothing a session can write moves it: not an environment variable
- * (`setx` would carry one into the next session), not a file. With the launch folder fixed too, no
- * `git init` or `.git` written during a session (in the launch folder, above it or elsewhere) can
- * make a folder outside it count (Claude review 2026-10-03). Anton launches in the synced folders,
+ * (`setx` would carry one into the next session), not a file. Anton launches in the synced folders,
  * never there. It must be a real folder, never a link or junction (a junction made during a session
  * at an absent C:\repos would otherwise lead it anywhere), and it is compared as written, never
  * through links. `testRoots` is set only by the tests, in their own process.
@@ -341,138 +337,42 @@ function underDevRoot(dir) {
   return devRoots().some((r) => d.startsWith(r) && d !== r);
 }
 
-/** The nearest folder at or above `dir` that holds a .git (a folder, or a linked worktree's file), or null. */
-function checkoutRoot(dir) {
-  let d = dir;
-  for (let i = 0; i < 64; i++) {
-    if (fs.existsSync(path.join(d, '.git'))) return d;
-    const parent = path.dirname(d);
-    if (parent === d) return null;
-    d = parent;
-  }
-  return null;
-}
-
 /**
- * Whether the git checkout at `root` is a developer's code repository: not a company folder, not a
- * campaign repository, and readable as git. A linked worktree is judged by the repository it belongs
- * to, wherever it lives. Anything that cannot be read as git fails closed (not a developer's checkout).
+ * Whether the session works in a developer's checkout, decided ONLY from facts the session cannot
+ * change, so no command can turn it on: the folder the session was launched in (CLAUDE_PROJECT_DIR,
+ * set by Claude Code and fixed for the session; the hook's `cwd` follows every `cd`) must be strictly
+ * inside the owner's code folder (devRoots), with no link or junction anywhere in its path, and its
+ * path must not say campaign or name a company folder; the shell must still be inside that launch
+ * folder. Earlier versions also read git remotes, a marker file, a worktree's .git link and a record
+ * written at session start: each was something a session could rewrite to turn the rules off
+ * (Codex and Claude review, 2026-10-03), so none is read. The cost, stated in the README: a campaign
+ * checkout under the code folder whose path does not say campaign counts as code.
+ *
+ * There the blanket shell rules below step aside: a code repository legitimately starts servers,
+ * makes local requests, and runs test and build scripts that use eval/exec and chain many files
+ * (measured 2026-10-03: they refused routine gates in a ROSS Suite session). The company files stay
+ * protected everywhere: file tools, connectors, deletes and the copy that post.js checks do not
+ * depend on this. Anton launches in the synced company folders, never under the code folder
+ * (Riaan, 2026-10-03: "make it work like we need it to without relying on me").
  */
-function devRepository(root) {
-  if (isProtected(norm(root)) || CAMPAIGN_REPO.test(norm(root)) || fs.existsSync(path.join(root, CAMPAIGN_MARKER))) return false;
-  const dotGit = path.join(root, '.git');
-  let gitDir = dotGit;
-  let st = null;
-  try { st = fs.statSync(dotGit); } catch (e) { return false; }
-  if (st.isFile()) {
-    // A linked worktree: "gitdir: <main>/.git/worktrees/<name>", whose commondir names the main .git.
-    const link = /^gitdir:\s*(.+?)\s*$/m.exec(readText(dotGit) || '');
-    if (!link) return false;
-    gitDir = path.resolve(root, link[1]);
-    const common = readText(path.join(gitDir, 'commondir'));
-    if (common === null) return false;
-    gitDir = path.resolve(gitDir, common.trim());
-  } else if (!st.isDirectory()) {
-    return false;
-  }
-  gitDir = realLocation(gitDir, root);
-  const mainRoot = path.dirname(gitDir);
-  if (isProtected(norm(gitDir)) || CAMPAIGN_REPO.test(norm(gitDir)) || fs.existsSync(path.join(mainRoot, CAMPAIGN_MARKER))) return false;
-  const settings = ownGitSettings(root);
-  return settings !== null && !CAMPAIGN_REPO.test(settings);
-}
-
-/**
- * The repository's own settings that say where it comes from (remotes, URL rewrites, includes), as
- * git itself resolves them: continued lines joined, includes followed, a worktree's own config read.
- * Reading the file as text missed a remote split across lines (Codex, 2026-10-03). Null when git
- * does not see `root` as the top of a repository, or cannot read its config (fail closed).
- */
-function ownGitSettings(root) {
-  // No GIT_* variable from the hook's environment (a persisted GIT_DIR would point git at another
-  // repository's config while it still reports `root` as the top).
-  const env = Object.fromEntries(Object.entries(process.env).filter(([k]) => !/^GIT_/i.test(k)));
-  const run = (args) => childProcess.spawnSync('git', ['-C', root, ...args], { encoding: 'utf8', timeout: 5000, windowsHide: true, env });
-  const top = run(['rev-parse', '--show-toplevel']);
-  if (top.status !== 0 || norm(realLocation(String(top.stdout).trim(), root)) !== norm(realLocation(root, root))) return null;
-  const list = run(['config', '--list', '--show-scope', '--includes']);
-  if (list.status !== 0) return null;
-  return String(list.stdout).split(/\r?\n/).filter((l) => /^(local|worktree)\t(remote\.|url\.|include)/i.test(l)).join(NL);
-}
-
-/**
- * Whether the session works in a developer's checkout. Decided from the folder the session was
- * launched in (CLAUDE_PROJECT_DIR, set by Claude Code and fixed for the session; the hook's `cwd`
- * follows every `cd`, so it alone could be steered into a fresh `git init`): that folder must be
- * under a dev root (devRoots), inside a developer's code repository (devRepository; never a checkout
- * at the home folder or a drive root), and the shell must still be inside that same checkout. There the blanket shell rules
- * below step aside: a code repository legitimately starts servers, makes local requests, and runs
- * test and build scripts that use eval/exec and chain many files (measured 2026-10-03: they refused
- * routine gates in a ROSS Suite session). The company files stay protected everywhere: file tools,
- * connectors, deletes and the copy that post.js checks do not depend on this. Owners working the
- * campaign launch in the synced company folders or the campaign repository, neither of which
- * counts (Riaan, 2026-10-03: "make it work like we need it to without relying on me").
- */
-function devCheckout(cwd, sessionId) {
-  return recordedDev(sessionId) && checkoutAllows(cwd);
-}
-
-/**
- * Where the guard records, when a session starts, whether it is a developer's checkout (sessionStart).
- * Decided before Claude can act, so a campaign session cannot later remove its own remote or marker
- * and become one (Codex round 2, 2026-10-03). The folder's name carries a company-folder marker, so
- * the guard protects the records like company files: no file tool may write there, a shell command
- * naming one may not delete it, and one it changes is put back. A missing record is never a
- * developer's checkout. `testSessionDir` is set only by the tests, in their own process.
- */
-let testSessionDir = null;
-function sessionFile(sessionId) {
-  const id = String(sessionId || '').replace(/[^A-Za-z0-9_-]/g, '').slice(0, 120);
-  return id ? path.join(testSessionDir || path.join(os.tmpdir(), 'glowming-campaign-guard', '_riven-claude', 'sessions'), id + '.json') : null;
-}
-
-function recordedDev(sessionId) {
-  const file = sessionFile(sessionId);
-  if (!file) return false;
-  try { return JSON.parse(fs.readFileSync(file, 'utf8')).dev === true; } catch (e) { return false; }
-}
-
-/**
- * The SessionStart hook: record whether this session is a developer's checkout. A later start of the
- * same session (resume, compact) can only make it stricter, never turn a refusal into an allowance.
- */
-function sessionStart(event) {
-  const file = sessionFile(event && event.session_id);
-  if (!file) return;
-  const launchFolder = process.env.CLAUDE_PROJECT_DIR;
-  let dev = !!launchFolder && checkoutAllows(launchFolder);
-  let before = null;
-  try { before = JSON.parse(fs.readFileSync(file, 'utf8')); } catch (e) { before = null; }
-  if (before !== null && before.dev !== true) dev = false;
-  fs.mkdirSync(path.dirname(file), { recursive: true });
-  fs.writeFileSync(file, JSON.stringify({ dev, at: Date.now() }));
-}
-
-/** The live half of devCheckout: the launch folder, its checkout and the shell's folder, as they are now. */
-function checkoutAllows(cwd) {
+function devCheckout(cwd) {
   const launched = process.env.CLAUDE_PROJECT_DIR;
   if (!launched) return false; // without the launch folder, nothing shows the session is a code repository's
-  const project = realLocation(launched, process.cwd());
-  // Under the code folder both as written and as resolved: a junction at either end leads nowhere.
-  if (isProtected(norm(project)) || !underDevRoot(path.resolve(launched)) || !underDevRoot(project)) return false;
-  const root = checkoutRoot(project);
-  if (!root || !underDevRoot(root) || path.dirname(root) === root || norm(root) === norm(realLocation(os.homedir(), process.cwd()))) return false;
-  if (!devRepository(root)) return false;
+  const written = path.resolve(launched);
+  if (!underDevRoot(written)) return false;
+  // The shell's folder RESOLVED, inside the launch folder AS WRITTEN: a link anywhere on the way (in
+  // the launch path, or one the shell went through) leaves it outside. A campaign or company name on
+  // the launch path is on the shell's path too.
   const where = realLocation(cwd || launched, process.cwd());
-  if (isProtected(norm(where))) return false;
-  return (norm(where) + '/').startsWith(norm(root).replace(/\/?$/, '/'));
+  if (isProtected(norm(where)) || CAMPAIGN_REPO.test(norm(where))) return false;
+  return (norm(where) + '/').startsWith(norm(written).replace(/\/?$/, '/'));
 }
 
 /** Decide one shell command, including the scripts it runs. */
-function checkBash(input, cwd, callId, sessionId) {
+function checkBash(input, cwd, callId) {
   const cmd = String(input.command || '');
   // In a developer's checkout only the company-folder protection applies (devCheckout).
-  const dev = devCheckout(cwd, sessionId);
+  const dev = devCheckout(cwd);
   if (!dev && HIDDEN_CODE.test(cmd)) {
     return 'Commands that hide or stream the code they run (encoded, eval/exec, stdin) are not allowed from this Claude. Write the script to a file first so it can be checked.';
   }
@@ -683,15 +583,14 @@ function decide(event) {
   const cwd = event.cwd || process.cwd();
   if (/^(Write|Edit|MultiEdit|NotebookEdit)$/.test(tool)) return checkWrite(tool, input, cwd);
   if (tool.startsWith('mcp__')) return checkMcp(tool, input, cwd);
-  if (typeof input.command === 'string') return checkBash(input, cwd, event.tool_use_id, event.session_id);
+  if (typeof input.command === 'string') return checkBash(input, cwd, event.tool_use_id);
   return null;
 }
 
-/** Tests only (their own process): stand in for the owner's code folder, and for the records' folder. */
+/** Tests only (their own process): stand in for the owner's code folder. */
 function setDevRootsForTests(roots) { testRoots = roots; }
-function setSessionDirForTests(dir) { testSessionDir = dir; }
 
-module.exports = { decide, sessionStart, checkWrite, checkNewFile, isTextFile, norm, sha1, walkFiles, snapId, CALENDAR, BANNED_CLAIMS, setDevRootsForTests, setSessionDirForTests };
+module.exports = { decide, checkWrite, checkNewFile, isTextFile, norm, sha1, walkFiles, snapId, CALENDAR, BANNED_CLAIMS, setDevRootsForTests };
 
 if (require.main === module) {
   let buf = '';
@@ -702,11 +601,6 @@ if (require.main === module) {
     try { event = JSON.parse(buf || '{}'); } catch (e) {
       process.stderr.write('glowming-campaign guard: could not read the tool call, so it was blocked to be safe.');
       process.exit(2);
-    }
-    // The SessionStart hook only records; it never stops a session from starting.
-    if (process.argv.includes('--session-start')) {
-      try { sessionStart(event); } catch (e) { /* no record: never a developer's checkout */ }
-      process.exit(0);
     }
     const reason = decide(event);
     if (reason) { process.stderr.write('Blocked by the Glowming campaign guard: ' + reason); process.exit(2); }

@@ -17,7 +17,6 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const zlib = require('zlib');
-const childProcess = require('child_process');
 
 const NL = String.fromCharCode(10);
 const guard = require(process.env.GUARD_PATH || './guard.js');
@@ -153,8 +152,7 @@ const allow = (why, ev) => { assert.strictEqual(decide(ev), null, 'should ALLOW:
 const block = (why, ev) => { assert.notStrictEqual(decide(ev), null, 'should BLOCK: ' + why); passed++; };
 const W = (p, content) => ({ tool_name: 'Write', tool_input: { file_path: p, content } });
 const E = (p, o, n) => ({ tool_name: 'Edit', tool_input: { file_path: p, old_string: o, new_string: n } });
-let currentSession; // set by launchedIn (section 5): the session whose start was recorded
-const B = (command, cwd) => ({ tool_name: 'Bash', tool_input: { command }, cwd, session_id: currentSession });
+const B = (command, cwd) => ({ tool_name: 'Bash', tool_input: { command }, cwd });
 // Sections 1-4 and 6 mean nothing if this machine's temp folder sits inside a checkout the guard
 // would trust: prove the blanket rules hold where Anton stands before anything else.
 block('start-up: a web request from Anton\'s folder is refused', B('curl -s https://example.com/'));
@@ -435,103 +433,32 @@ block('a Magnific prompt with an appetite claim', { tool_name: 'mcp__magnific__i
 
 // ---- 5. Developer's checkouts (2026-10-03) ----------------------------------------------------------
 // A code repository on an owner's machine starts servers, makes local requests and runs build scripts:
-// the blanket shell rules step aside there. Everything that protects the company files still applies,
-// and a campaign repository (or a worktree of one, wherever it lives) is never a developer's checkout.
-// Decided from the folder the session was LAUNCHED in (CLAUDE_PROJECT_DIR), which Claude cannot move,
-// and only under the owner's code folder (C:\repos on the owner's machine; this folder here).
+// the blanket shell rules step aside there. Everything that protects the company files still applies.
+// Decided ONLY from what a session cannot change: the folder it was LAUNCHED in (CLAUDE_PROJECT_DIR),
+// strictly inside the owner's code folder (C:\repos on the owner's machine; this folder here), with no
+// link in its path and no campaign or company name in it, and the shell still inside that folder.
 const repos = path.join(root, 'repos');
 guard.setDevRootsForTests([repos]);
-/** git, in `dir`; the guard asks git itself, so the fixtures are real repositories. */
-const git = (dir, ...args) => {
-  const r = childProcess.spawnSync('git', ['-C', dir, ...args], { encoding: 'utf8' });
-  if (r.status !== 0) throw new Error('git ' + args.join(' ') + ' in ' + dir + ': ' + r.stderr);
-  return r.stdout;
-};
-/** A real git repository at `dir`, with the given remote (none if not given). */
-const gitRepo = (dir, remote) => {
-  fs.mkdirSync(dir, { recursive: true });
-  git(dir, 'init', '-q');
-  if (remote) git(dir, 'remote', 'add', 'origin', remote);
-  return dir;
-};
-/** A linked worktree of `main` at `dir`, as git writes it (.git file -> gitdir with HEAD, commondir, gitdir). */
-const worktree = (dir, main, name) => {
-  const gd = path.join(main, '.git', 'worktrees', name);
-  fs.mkdirSync(gd, { recursive: true });
-  fs.writeFileSync(path.join(gd, 'HEAD'), 'ref: refs/heads/' + name + NL);
-  fs.writeFileSync(path.join(gd, 'commondir'), '../..' + NL);
-  fs.mkdirSync(dir, { recursive: true });
-  fs.writeFileSync(path.join(gd, 'gitdir'), path.join(dir, '.git') + NL);
-  fs.writeFileSync(path.join(dir, '.git'), 'gitdir: ' + gd + NL);
-  return dir;
-};
-const devRepo = gitRepo(path.join(repos, 'ROSS-Suite'), 'https://github.com/RivenOnlineSoftwareServices/ROSS-Suite.git');
+const devRepo = path.join(repos, 'ROSS-Suite');
 const devScripts = path.join(devRepo, 'scripts');
-const campRepo = gitRepo(path.join(repos, 'Glowming-Summer-Campaign-2026'), 'https://github.com/RivenOnlineSoftwareServices/Glowming-Summer-Campaign-2026.git');
-for (const d of [devScripts, path.join(devRepo, 'src'), path.join(campRepo, 'drafts')]) fs.mkdirSync(d, { recursive: true });
-// Linked worktrees: one of the dev repository inside it; one of the campaign repository living OUTSIDE
-// it under a name that says nothing (its .git file is the only thing tying it to the campaign).
-const devTree = worktree(path.join(devRepo, '.claude', 'worktrees', 'fix'), devRepo, 'fix');
-const campTree = worktree(path.join(repos, 'tidy-copy'), campRepo, 'tidy');
-// A clone of the campaign under a short name; a campaign repository named otherwise, with the marker.
-const CAMPAIGN_URL = 'https://github.com/RivenOnlineSoftwareServices/Glowming-Summer-Campaign-2026.git';
-const renamedClone = gitRepo(path.join(repos, 'gsc'), CAMPAIGN_URL);
-const markedRepo = gitRepo(path.join(repos, 'Glowming-Winter-Promo-2027'), 'https://github.com/RivenOnlineSoftwareServices/Glowming-Winter-Promo-2027.git');
-fs.writeFileSync(path.join(markedRepo, '.glowming-campaign'), 'campaign work' + NL);
-// The campaign remote hidden from a plain reading of .git/config, each way git still resolves it
-// (Codex 2026-10-03): a value continued across lines, an included file, a URL rewrite.
-const BS = String.fromCharCode(92);
-const splitRemote = gitRepo(path.join(repos, 'neutral-split'));
-fs.appendFileSync(path.join(splitRemote, '.git', 'config'), '[remote "origin"]' + NL + '\turl = https://github.com/RivenOnlineSoftwareServices/Glowming-Summer-Cam' + BS + NL + 'paign-2026.git' + NL);
-assert.ok(fs.readFileSync(path.join(splitRemote, '.git', 'config'), 'utf8').includes('Cam' + BS + NL + 'paign'), 'the fixture keeps its line continuation');
-assert.ok(/campaign/i.test(git(splitRemote, 'config', '--get', 'remote.origin.url')), 'git resolves the split remote');
-const includedRemote = gitRepo(path.join(repos, 'neutral-include'));
-fs.writeFileSync(path.join(repos, 'neutral-include.cfg'), '[remote "origin"]' + NL + '\turl = https://github.com/RivenOnlineSoftwareServices/Glowming-Summer-Campaign-2026.git' + NL);
-fs.appendFileSync(path.join(includedRemote, '.git', 'config'), '[include]' + NL + '\tpath = ../../neutral-include.cfg' + NL);
-const rewrittenRemote = gitRepo(path.join(repos, 'neutral-rewrite'), 'gsc:main');
-git(rewrittenRemote, 'config', 'url.https://github.com/RivenOnlineSoftwareServices/Glowming-Summer-Campaign-2026.git.insteadOf', 'gsc:main');
-// A config git refuses; a .git folder that is not a repository at all.
-const brokenConfig = gitRepo(path.join(repos, 'broken'));
-fs.appendFileSync(path.join(brokenConfig, '.git', 'config'), '[[ not a section' + NL);
-const hollow = path.join(repos, 'hollow');
-fs.mkdirSync(path.join(hollow, '.git'), { recursive: true });
-// A folder made into a checkout from Anton's session (cd + git init); a .git file that is not a worktree link.
-const freshInit = gitRepo(path.join(repos, 'fresh'));
-const oddLink = path.join(repos, 'odd');
-fs.mkdirSync(oddLink, { recursive: true });
-fs.writeFileSync(path.join(oddLink, '.git'), 'not a worktree link' + NL);
-// A junction with a neutral name leading into a local campaign repository (no remote: only the
-// junction's real location says what it is).
-const campLocal = gitRepo(path.join(repos, 'Glowming-Campaign-local'));
+const devTree = path.join(devRepo, '.claude', 'worktrees', 'fix');
+const campRepo = path.join(repos, 'Glowming-Summer-Campaign-2026');
+const campTree = path.join(campRepo, '.claude', 'worktrees', 'tidy');
+// Folders inside a dev launch whose own name says campaign (the shell going there gets the full rules).
+const campNotes = path.join(devRepo, 'campaign-notes');
+// A git checkout kept INSIDE a company folder is company files (under the code folder here, so the
+// company-folder rule alone decides it).
+const companyCode = path.join(repos, '_Riven-Claude', 'code');
+const antonWork = path.join(antonHome, 'Work');
+for (const d of [devScripts, path.join(devRepo, 'src'), devTree, path.join(campRepo, 'drafts'), campTree, campNotes, companyCode, antonWork]) fs.mkdirSync(d, { recursive: true });
+// A junction with a neutral name leading into a campaign folder.
 const campAlias = path.join(repos, 'alias');
-fs.symlinkSync(campLocal, campAlias, 'junction');
-// A git checkout kept INSIDE a company folder is company files, never a developer's checkout (kept
-// under the dev root here, so the company-folder rule alone decides it).
-const companyCode = gitRepo(path.join(repos, '_Riven-Claude', 'code'));
-// A dotfiles repository at the home folder makes nothing under it a developer's checkout (kept under
-// the dev root here, so the home-folder rule alone decides it).
-const homeRepo = gitRepo(path.join(repos, 'home-riaan'), 'https://github.com/someone/dotfiles.git');
-fs.mkdirSync(path.join(homeRepo, 'Desktop'), { recursive: true });
-// A .git written during Anton's session, in his launch folder or above it (outside the dev root).
-const antonWork = gitRepo(path.join(antonHome, 'Work'));
-const annaHome = gitRepo(path.join(root, 'Users', 'anna'));
-fs.mkdirSync(path.join(annaHome, 'Desktop'), { recursive: true });
-// Session records go to this run's own folder, still under a company-folder marker as on the machine.
-const sessionDir = path.join(root, 'guard-sessions', '_riven-claude', 'sessions');
-guard.setSessionDirForTests(sessionDir);
-let sessionCount = 0;
-/**
- * Run `fn` as a session launched in `project` (undefined: no launch folder known), its start recorded
- * by the SessionStart hook first, as Claude Code does before Claude can act.
- */
+fs.symlinkSync(campRepo, campAlias, 'junction');
+/** Run `fn` as a session launched in `project` (undefined: no launch folder known). */
 const launchedIn = (project, fn) => {
   const was = process.env.CLAUDE_PROJECT_DIR;
   if (project === undefined) delete process.env.CLAUDE_PROJECT_DIR; else process.env.CLAUDE_PROJECT_DIR = project;
-  currentSession = 'test-session-' + (++sessionCount);
-  try { guard.sessionStart({ session_id: currentSession }); fn(); } finally {
-    currentSession = undefined;
-    if (was === undefined) delete process.env.CLAUDE_PROJECT_DIR; else process.env.CLAUDE_PROJECT_DIR = was;
-  }
+  try { fn(); } finally { if (was === undefined) delete process.env.CLAUDE_PROJECT_DIR; else process.env.CLAUDE_PROJECT_DIR = was; }
 };
 // What a test-and-build script looks like: a child process, a regex's exec, a real network import, eval.
 fs.writeFileSync(path.join(devScripts, 'gates.mjs'), [
@@ -553,8 +480,9 @@ launchedIn(devRepo, () => {
   allow('dev: an inline eval in node -e', devB('node -e "console.log(eval(\'1+1\'))"'));
   allow('dev: a test fixture that names a banned word', devB('echo "detox" > fixtures/claims.txt'));
   allow('dev: from a sub-folder of the checkout', devB('curl -s http://localhost:3000/', path.join(devRepo, 'src')));
-  block('dev launch, but the shell has left the checkout: a web request', web(antonHome));
-  block('dev launch, the shell has gone into a fresh git init folder: a web request', web(freshInit));
+  block('dev launch, but the shell has left the launch folder: a web request', web(antonHome));
+  block('dev launch, the shell has gone into another folder of the code folder: a web request', web(campRepo));
+  block('dev launch, the shell in a folder whose name says campaign: a web request', web(campNotes));
   // The company files are protected from a developer's checkout exactly as from anywhere else.
   block('dev: rm a company file', devB('rm "' + files.png + '"'));
   block('dev: the Write tool on riaan.md', { tool_name: 'Write', tool_input: { file_path: files.riaan, content: 'x' }, cwd: devRepo });
@@ -564,11 +492,10 @@ launchedIn(devRepo, () => {
   shell('dev: a shell append of a weight-loss claim into anton.md', devB('echo "Lose weight fast" >> "' + files.anton + '"'), () => fs.appendFileSync(files.anton, 'Lose weight fast' + NL), STOPPED);
 });
 block('the same five-level chain from Anton\'s folder (the depth rule itself still holds)', B('bash "' + path.join(devScripts, 'step1.sh') + '"'));
-launchedIn(devTree, () => allow('dev: launched in a linked worktree of the checkout', devB('curl -s http://localhost:3000/', devTree)));
+launchedIn(devTree, () => allow('dev: launched in a worktree inside the checkout', devB('curl -s http://localhost:3000/', devTree)));
 launchedIn(undefined, () => block('no launch folder known, standing in a checkout: a web request', web(devRepo)));
-launchedIn(antonHome, () => block('launched in Anton\'s folder, then cd + git init: a web request', web(freshInit)));
-launchedIn(antonWork, () => block('a .git written in Anton\'s own launch folder: a web request', web(antonWork)));
-launchedIn(path.join(annaHome, 'Desktop'), () => block('a .git written above the launch folder: a web request', web(path.join(annaHome, 'Desktop'))));
+launchedIn(antonWork, () => block('launched in Anton\'s folder (outside the code folder): a web request', web(antonWork)));
+launchedIn(repos, () => block('launched at the code folder itself: a web request', web(repos)));
 {
   // A session could persist an environment variable for the next one (setx): none is read.
   process.env.GLOWMING_DEV_ROOTS = antonHome;
@@ -578,62 +505,12 @@ launchedIn(path.join(annaHome, 'Desktop'), () => block('a .git written above the
 launchedIn(campRepo, () => block('campaign repository: a web request', web(campRepo)));
 launchedIn(path.join(campRepo, 'drafts'), () => block('campaign repository, a sub-folder: a web request', web(path.join(campRepo, 'drafts'))));
 launchedIn(campTree, () => {
-  block('a worktree of the campaign repository living elsewhere: a web request', web(campTree));
-  block('a worktree of the campaign repository: hidden code', devB('node -e "console.log(eval(\'1+1\'))"', campTree));
+  block('a worktree made inside the campaign repository: a web request', web(campTree));
+  block('a worktree made inside the campaign repository: hidden code', devB('node -e "console.log(eval(\'1+1\'))"', campTree));
 });
-launchedIn(renamedClone, () => block('a clone of the campaign repository under another name: a web request', web(renamedClone)));
-launchedIn(markedRepo, () => block('a campaign repository named otherwise, with the marker file: a web request', web(markedRepo)));
-// Decided when the session starts: what the session itself changes later never makes it a
-// developer's checkout (Codex round 2).
-launchedIn(renamedClone, () => {
-  git(renamedClone, 'remote', 'remove', 'origin');
-  try {
-    block('the campaign clone\'s session after removing its own remote: a web request', web(renamedClone));
-    guard.sessionStart({ session_id: currentSession }); // the same session started again (resume, compact)
-    block('that session started again after removing its remote: a web request', web(renamedClone));
-  } finally { git(renamedClone, 'remote', 'add', 'origin', CAMPAIGN_URL); }
-});
-launchedIn(markedRepo, () => {
-  const marker = path.join(markedRepo, '.glowming-campaign');
-  fs.rmSync(marker);
-  try { block('the marked repository\'s session after deleting its own marker: a web request', web(markedRepo)); }
-  finally { fs.writeFileSync(marker, 'campaign work' + NL); }
-});
-launchedIn(devRepo, () => {
-  // The records are protected like company files, from a developer's checkout too.
-  const record = path.join(sessionDir, currentSession + '.json');
-  block('the Write tool on a session record', { tool_name: 'Write', tool_input: { file_path: record, content: '{"dev":true}' }, session_id: currentSession });
-  block('rm of a session record', devB('rm "' + record + '"'));
-});
-{
-  // A session whose start was never recorded is never a developer's checkout.
-  process.env.CLAUDE_PROJECT_DIR = devRepo;
-  try { block('a code repository session with no start record: a web request', { ...devB('curl -s http://localhost:3000/'), session_id: 'never-started' }); }
-  finally { delete process.env.CLAUDE_PROJECT_DIR; }
-}
-launchedIn(splitRemote, () => block('a campaign remote continued across two lines of .git/config: a web request', web(splitRemote)));
-launchedIn(includedRemote, () => block('a campaign remote in an included config file: a web request', web(includedRemote)));
-launchedIn(rewrittenRemote, () => block('a campaign remote reached through a URL rewrite: a web request', web(rewrittenRemote)));
-launchedIn(brokenConfig, () => block('a .git/config git refuses: a web request', web(brokenConfig)));
-launchedIn(hollow, () => block('a .git folder that is not a repository: a web request', web(hollow)));
-{
-  // A GIT_DIR in the hook's environment must not point git at another repository's config.
-  process.env.GIT_DIR = path.join(devRepo, '.git');
-  try { launchedIn(renamedClone, () => block('a GIT_DIR in the environment pointing at a code repository: a web request from the campaign clone', web(renamedClone))); }
-  finally { delete process.env.GIT_DIR; }
-}
+launchedIn(campNotes, () => block('launched in a folder whose name says campaign: a web request', web(campNotes)));
 launchedIn(campAlias, () => block('a junction with a neutral name into the campaign repository: a web request', web(campAlias)));
-launchedIn(oddLink, () => block('a .git file that is not a worktree link: a web request', web(oddLink)));
-launchedIn(companyCode, () => block('a git checkout inside a company folder: a web request', web(companyCode)));
-{
-  const was = { USERPROFILE: process.env.USERPROFILE, HOME: process.env.HOME };
-  process.env.USERPROFILE = homeRepo; process.env.HOME = homeRepo;
-  try {
-    launchedIn(path.join(homeRepo, 'Desktop'), () => block('a dotfiles .git at the home folder: a web request from the Desktop', web(path.join(homeRepo, 'Desktop'))));
-  } finally {
-    for (const [k, v] of Object.entries(was)) { if (v === undefined) delete process.env[k]; else process.env[k] = v; }
-  }
-}
+launchedIn(companyCode, () => block('a checkout inside a company folder: a web request', web(companyCode)));
 {
   // A junction made at an absent C:\repos, leading to Anton's folder, is not a code folder.
   const reposLink = path.join(root, 'repos-link');
@@ -652,14 +529,6 @@ launchedIn(companyCode, () => block('a git checkout inside a company folder: a w
   const into = path.join(antonHome, 'to-repos');
   fs.symlinkSync(devRepo, into, 'junction');
   launchedIn(into, () => block('a launch folder outside the code folder that is a junction leading in: a web request', web(into)));
-}
-{
-  // The code folder itself is never the checkout (a .git at C:\repos).
-  gitRepo(repos);
-  const notes = path.join(repos, 'notes');
-  fs.mkdirSync(notes, { recursive: true });
-  try { launchedIn(notes, () => block('a .git at the code folder itself: a web request', web(notes))); }
-  finally { fs.rmSync(path.join(repos, '.git'), { recursive: true, force: true }); }
 }
 
 // ---- 6. Two false positives, fixed everywhere, and no new way past the rules (2026-10-03) ----------

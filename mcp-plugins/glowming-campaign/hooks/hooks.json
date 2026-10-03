@@ -1,17 +1,6 @@
 {
-  "description": "Guard for the Glowming campaign files: guard.js checks every write, shell command and connector call against an allow-list using the files on disk (and, at session start, records whether the session is a developer's checkout); calendar-links.js puts the posting calendar back if a save lost a tracking link; a content check reads the text AFTER it is written and only warns, it never blocks (Riaan, 2026-10-02: warn, never refuse).",
+  "description": "Guard for the Glowming campaign files: guard.js checks every write, shell command and connector call against an allow-list using the files on disk; calendar-links.js puts the posting calendar back if a save lost a tracking link; a content check reads the text AFTER it is written and only warns, it never blocks (Riaan, 2026-10-02: warn, never refuse).",
   "hooks": {
-    "SessionStart": [
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "node \"${CLAUDE_PLUGIN_ROOT}/hooks/guard.js\" --session-start",
-            "timeout": 15
-          }
-        ]
-      }
-    ],
     "PreToolUse": [
       {
         "matcher": "Write|Edit|MultiEdit|NotebookEdit|Bash|PowerShell|mcp__.*",
