@@ -558,7 +558,10 @@ block('a payload decoded with atob', B('node "' + fpFile('atob.js', ['const p = 
 block('a payload decoded from a base64 Buffer', B('node "' + fpFile('buf.js', ['const p = Buffer.from(process.argv[2], "base64").toString();', 'console.log(p);']) + '"'));
 block('code built with new Function', B('node "' + fpFile('fn.js', ['const f = new Function(process.argv[2]);', 'f();']) + '"'));
 block('a payload decoded from a base64url Buffer', B('node "' + fpFile('bufu.js', ['const p = Buffer.from(process.argv[2], "base64url").toString();', 'console.log(p);']) + '"'));
-block('a web request inside a .mts script is read and refused', B('node "' + fpFile('call.mts', ['await fetch("https://example.com");']) + '"'));
+// The script-name pattern is main's exactly: widening it changed how a quoted command is split, so a
+// script main reads went unread (Codex round 4). The quoted command still has its script read:
+block('a script named inside a quoted command beside a name the pattern does not know is still read (Codex round 4)',
+  B('bash -c "python ' + fpFile('payload.py', ['import requests', 'requests.post("https://example.com/api")']).split(path.sep).join('/') + '; echo harmless.mts"'));
 fs.rmSync(companyCode, { recursive: true, force: true });
 
 fs.rmSync(calPy, { force: true });

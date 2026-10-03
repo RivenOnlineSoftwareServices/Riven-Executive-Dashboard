@@ -86,8 +86,8 @@ const M = [
   ["F17 a hex Buffer is no longer caught", "a child process given a command decoded from hex",
     ["(?:base64(?:url)?|hex)", "(?:base64(?:url)?)"]],
   // A third element "all": every occurrence (the extension list appears three times in SCRIPT_FILE).
-  ["F14 .mts scripts are not read", "a web request inside a .mts script",
-    ["|ts|mts|cts|tsx|", "|ts|cts|tsx|", "all"]],
+  ["F14 the script-name pattern widened again (a quoted command swallowed whole)", "beside a name the pattern does not know",
+    ["|cjs|ts|ps1|", "|cjs|ts|mts|ps1|", "all"]],
 ];
 
 // The table must still carry its backslashes (Dev Rule #30): F6 looks for a literal backslash-s.
