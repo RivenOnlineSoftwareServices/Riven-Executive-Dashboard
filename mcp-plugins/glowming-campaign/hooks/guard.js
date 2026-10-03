@@ -27,6 +27,11 @@
  * Everything else inside the company folders is read-only. Files outside them
  * (temporary working files) are allowed.
  *
+ * The guard's own plugin folder (found from where this file runs, and CLAUDE_PLUGIN_ROOT) is protected
+ * everywhere, a developer's checkout included: no file-tool write, no non-read connector call naming
+ * it, no shell command naming it except a plain read, no delete or move of it or a folder holding it;
+ * and every other shell command has it copied first so post.js puts back any change.
+ *
  * A developer's checkout (devCheckout: the session was LAUNCHED strictly inside the owner's code
  * folder, <home drive>\repos, by a path with no link in it that neither says campaign nor names a
  * company folder, and the shell is still inside that launch folder): the blanket
@@ -73,7 +78,7 @@ const CALENDAR = '02 posting calendar.xlsx';
  * session folder, '..' resolved, and the nearest existing folder's links followed,
  * so 'work/anton/../../riaan.md' is judged as riaan.md.
  */
-function realLocation(p, cwd) {
+function realLocation(p, cwd, native) {
   let s = String(p || '');
   if (s === '~' || s.startsWith('~/') || s.startsWith('~' + path.sep)) s = path.join(os.homedir(), s.slice(1));
   let abs = path.resolve(cwd || process.cwd(), s);
@@ -85,7 +90,8 @@ function realLocation(p, cwd) {
     tail.unshift(path.basename(probe));
     probe = parent;
   }
-  try { abs = path.join(fs.realpathSync(probe), ...tail); } catch (e) { /* keep the resolved path */ }
+  // `native` also expands Windows short names (C:\Users\RIAAN~1), used where a miss would let a write through.
+  try { abs = path.join((native ? fs.realpathSync.native : fs.realpathSync)(probe), ...tail); } catch (e) { /* keep the resolved path */ }
   return abs;
 }
 
@@ -96,6 +102,157 @@ function norm(p) {
 
 function isProtected(np) {
   return PROTECTED_MARKERS.some((m) => np.includes(m));
+}
+
+// ---- The guard's own folder ------------------------------------------------------------------------
+// Editing hooks/guard.js or hooks/hooks.json would switch the guard off, so the plugin folder is
+// protected everywhere, a developer's checkout included. It is found from facts a session cannot
+// change: the folder THIS file runs from (the parent of hooks/), and CLAUDE_PLUGIN_ROOT, which Claude
+// Code sets for the hook itself. Both only ADD a protected folder; neither can take one away. The
+// installed copy lives in the app's data folder (Cowork: ...\AppData\Roaming\Claude\...\rpm\plugin_<id>;
+// Claude Code: ~/.claude/plugins/cache/...), never in the repository a developer edits.
+const PLUGIN_REASON = 'The campaign guard\'s own files (this plugin\'s folder) never change from here. Ask Riaan\'s side if the guard needs a change.';
+let testPluginRoots = [];
+
+/** The plugin folders as given: this file's plugin, CLAUDE_PLUGIN_ROOT if it holds this guard. Never a drive root. */
+function givenPluginRoots() {
+  const given = [];
+  if (path.basename(__dirname).toLowerCase() === 'hooks') given.push(path.dirname(__dirname));
+  const env = process.env.CLAUDE_PLUGIN_ROOT;
+  if (env && path.isAbsolute(env) && fs.existsSync(path.join(env, 'hooks', 'guard.js'))) given.push(env);
+  return given.concat(testPluginRoots).map((d) => path.resolve(d)).filter((d) => path.parse(d).root !== d);
+}
+
+/** The plugin folders as real folders (deduplicated), for walking and copying. */
+function pluginRootDirs() {
+  const out = new Map();
+  for (const d of givenPluginRoots()) {
+    let real = d;
+    try { real = fs.realpathSync(d); } catch (e) { continue; } // a folder that is not there holds nothing to copy
+    out.set(norm(real), real);
+  }
+  return [...out.values()];
+}
+
+/** Every spelling of the plugin folders (as written, through links, Windows long names), normalised. */
+function pluginRoots() {
+  const out = new Set();
+  const add = (p) => out.add(norm(p).replace(/\/+$/, ''));
+  for (const d of givenPluginRoots()) {
+    add(d);
+    try { add(fs.realpathSync(d)); } catch (e) { /* missing */ }
+    try { add(fs.realpathSync.native(d)); } catch (e) { /* missing */ }
+  }
+  return [...out];
+}
+
+/** Whether a normalised location is one of the roots or inside one. */
+function within(np, roots) {
+  return roots.some((r) => np === r || np.startsWith(r + '/'));
+}
+
+/**
+ * The folders whose removal or move takes the plugin folder with it: its parents, from the first one
+ * below the home folder (or two levels below a drive root) down. Home and above are left out: a
+ * script's " / " or a "~" would otherwise read as deleting the plugin.
+ */
+function pluginParents(roots) {
+  const home = norm(os.homedir()).replace(/\/+$/, '');
+  const out = new Set();
+  for (const r of roots) {
+    let p = r;
+    for (;;) {
+      const up = norm(path.dirname(p)).replace(/\/+$/, '');
+      if (up === p || !up) break;
+      p = up;
+      const segs = p.split('/').filter(Boolean).length - 1; // after the drive
+      if (segs < 2 || home === p || home.startsWith(p + '/')) continue;
+      out.add(p);
+    }
+  }
+  return [...out];
+}
+
+/** Is an existing file a hard link to one of the plugin's files (same file under another name)? */
+function hardLinkedToPlugin(abs) {
+  let st;
+  try { st = fs.statSync(abs, { bigint: true }); } catch (e) { return false; }
+  if (!st.isFile() || st.nlink < 2n) return false;
+  for (const dir of pluginRootDirs()) {
+    let list = [];
+    try { list = walkFiles(dir, []); } catch (e) { list = []; }
+    for (const f of list) {
+      try { const o = fs.statSync(f, { bigint: true }); if (o.dev === st.dev && o.ino === st.ino) return true; } catch (e) { /* gone */ }
+    }
+  }
+  return false;
+}
+
+/** Whether a path a file tool or connector names lands in the plugin folder (links, short names, hard links). */
+function inPlugin(p, cwd) {
+  const roots = pluginRoots();
+  if (!roots.length || !p) return false;
+  const plain = realLocation(p, cwd);
+  if (within(norm(plain), roots) || within(norm(realLocation(p, cwd, true)), roots)) return true;
+  return hardLinkedToPlugin(plain);
+}
+
+/** $NAME, ${NAME}, %NAME% and $env:NAME replaced from this process's environment (unknown ones kept). */
+function expandVars(s) {
+  return s.replace(/%([A-Za-z_][A-Za-z0-9_()]*)%|\$env:([A-Za-z_]\w*)|\$\{([A-Za-z_]\w*)\}|\$([A-Za-z_]\w*)/g,
+    (m, a, b, c, d) => { const v = process.env[a || b || c || d]; return v === undefined ? m : v; });
+}
+
+/** One glob segment ("plugin_*") as an anchored pattern. */
+function globSeg(seg) {
+  return new RegExp('^' + seg.replace(/[.+^${}()|[\]\\]/g, '\\$&').replace(/\*/g, '[^/]*').replace(/\?/g, '[^/]') + '$');
+}
+
+/**
+ * What a shell command (with the scripts it runs) says about the plugin folder: `inside` = it names
+ * a place in it (or the shell stands in it); `parent` = it names one of its parents (pluginParents).
+ * Every piece is resolved from the shell's folder, with ~ and environment variables expanded; a
+ * piece with * or ? is matched as a glob.
+ */
+function pluginPlaces(full, cwd) {
+  const roots = pluginRoots();
+  const res = { inside: false, parent: false };
+  if (!roots.length) return res;
+  const parents = pluginParents(roots);
+  if (within(norm(realLocation(cwd || process.cwd(), process.cwd())), roots)) res.inside = true;
+  const text = norm(expandVars(full));
+  if (roots.some((r) => text.includes(r))) res.inside = true;
+  const pieces = new Set();
+  for (const seg of full.split(/["'\n\r`]/)) {
+    pieces.add(seg.trim());
+    for (const t of seg.split(/[\s<>|;&(),=]+/)) pieces.add(t);
+  }
+  for (const raw of pieces) {
+    if (res.inside && res.parent) break;
+    if (!raw || raw.length > 1024) continue;
+    const piece = expandVars(raw);
+    if (/[*?]/.test(piece)) {
+      const pat = norm(path.resolve(cwd || process.cwd(), piece.replace(/^~(?=$|[\\/])/, os.homedir()))).replace(/\/+$/, '');
+      const ps = pat.split('/');
+      const hits = (target, prefix) => {
+        const ts = target.split('/');
+        return (prefix ? ps.length >= ts.length : ps.length === ts.length) && ts.every((t, i) => globSeg(ps[i]).test(t));
+      };
+      if (roots.some((r) => hits(r, true))) res.inside = true;
+      if (parents.some((p) => hits(p, false))) res.parent = true;
+      continue;
+    }
+    const locs = [norm(path.resolve(cwd || process.cwd(), piece.replace(/^~(?=$|[\\/])/, os.homedir())))];
+    // A path-like piece is also followed through links and short names (an ordinary word is not, for speed).
+    if (/[\\/~]/.test(piece) || /^\.\.?$/.test(piece) || /\.[a-z0-9]{1,5}$/i.test(piece)) {
+      locs.push(norm(realLocation(piece, cwd)), norm(realLocation(piece, cwd, true)));
+    }
+    for (const l of locs.map((x) => x.replace(/\/+$/, ''))) {
+      if (within(l, roots)) res.inside = true;
+      if (parents.includes(l)) res.parent = true;
+    }
+  }
+  return res;
 }
 
 /** The part of the path after a folder marker, or null. */
@@ -167,6 +324,8 @@ const UNREADABLE = 'That file exists but could not be read (OneDrive may still b
 function checkWrite(tool, input, cwd, before) {
   const given = input.file_path || input.notebook_path || '';
   if (!given) return null;
+  // The guard's own folder, everywhere (a developer's checkout included): before anything else.
+  if (inPlugin(given, cwd)) return PLUGIN_REASON;
   const raw = realLocation(given, cwd);
   const np = norm(raw);
   if (!isProtected(np)) return null; // a temporary working file outside the company folders
@@ -387,11 +546,23 @@ function checkBash(input, cwd, callId) {
   if ((isProtected(nfull) || inFolder) && REMOVE_SHELL.test(full)) {
     return 'Deleting, moving or renaming files in the company folders is not allowed, the posting calendar included.';
   }
+  // The guard's own folder, a developer's checkout included. Removing or moving it, or a parent that
+  // holds it, would leave no guard and no post.js to put it back, so that is refused first.
+  const own = pluginPlaces(full, cwd);
+  if ((own.inside || own.parent) && REMOVE_SHELL.test(full)) {
+    return 'Deleting, moving or renaming the campaign guard\'s own files (or a folder that holds them) is not allowed.';
+  }
   // Throwing output away (2>/dev/null, >nul) writes no company file.
   const discard = /(&|\d)?>{1,2}\s*(\/dev\/null|nul)\b/gi;
   const cmdNoDiscard = cmd.replace(discard, '');
   const shellNoDiscard = scripts.shellText.replace(discard, '');
   const redirects = REDIRECT.test(cmdNoDiscard) || REDIRECT.test(shellNoDiscard);
+  const plainRead = !scripts.text && !redirects && isReadOnly(cmdNoDiscard);
+  // Anything but a plain read that names the guard's folder is refused before it runs: post.js puts the
+  // folder back afterwards, but a command that rewrites post.js itself would leave nothing to do that.
+  if (own.inside && !plainRead) {
+    return 'Commands that could change the campaign guard\'s own files are not allowed. Reading them (cat, ls, grep) is fine.';
+  }
   if (!dev && NET_CALL.test(full)) {
     return 'Web requests from the shell or a script are not allowed from this Claude (adverts, the shop and email are never changed this way). Use a connector to read, or ask Riaan\'s side.';
   }
@@ -406,10 +577,12 @@ function checkBash(input, cwd, callId) {
   // Writes are not guessed from the text (there is always one more way to write a file).
   // Instead every company folder the command names, and the folder it runs in, is copied
   // now; post.js compares afterwards and puts back or removes whatever the rules forbid.
+  // The guard's own folder is copied for EVERY command but a plain read, named or not: a path built
+  // at run time, a hard link, or hidden code in a developer's checkout cannot be seen in the text.
   // A plain read (ls, cat, grep ... with no redirect and no script) needs no copy.
-  if (!(isProtected(nfull) || inFolder)) return null;
-  if (!scripts.text && !redirects && isReadOnly(cmdNoDiscard)) return null;
-  return snapshotFolders(full, cwd, inFolder, callId);
+  if (plainRead) return null;
+  const company = isProtected(nfull) || inFolder;
+  return snapshotFolders(company ? foldersNamed(full, cwd, inFolder) : [], pluginRootDirs(), cwd, callId);
 }
 
 // Commands that only read. Every part of a pipeline or chain must be one of these.
@@ -474,14 +647,15 @@ function snapId(callId) {
 }
 
 /**
- * Copy every file under every named company folder (all depths), for post.js to compare after
- * THIS tool call. Null = ok, else a reason to block.
+ * Copy every file under every named company folder and every plugin folder (all depths), for
+ * post.js to compare after THIS tool call. A plugin folder's entry is marked `plugin`: any change
+ * there is put back. Null = ok, else a reason to block.
  */
-function snapshotFolders(full, cwd, inFolder, callId) {
-  let dirs = foldersNamed(full, cwd, inFolder);
-  if (!dirs.length) return null;
+function snapshotFolders(companyDirs, pluginDirs, cwd, callId) {
   // A folder inside another named folder is already covered by it.
-  dirs = dirs.filter((d) => !dirs.some((o) => o !== d && norm(d).startsWith(norm(o).replace(/\/?$/, '/'))));
+  const dirs = companyDirs.filter((d) => !companyDirs.some((o) => o !== d && norm(d).startsWith(norm(o).replace(/\/?$/, '/'))));
+  const all = dirs.map((dir) => ({ dir, plugin: false })).concat(pluginDirs.map((dir) => ({ dir, plugin: true })));
+  if (!all.length) return null;
   const id = snapId(callId);
   const backupDir = path.join(os.tmpdir(), 'glowming-snap-' + id + '.d');
   const manifest = { cwd: path.resolve(cwd || process.cwd()), backupDir, created: Date.now(), dirs: [] };
@@ -489,8 +663,8 @@ function snapshotFolders(full, cwd, inFolder, callId) {
   let n = 0;
   try {
     fs.mkdirSync(backupDir, { recursive: true });
-    for (const dir of dirs) {
-      const entry = { dir, files: [] };
+    for (const { dir, plugin } of all) {
+      const entry = { dir, plugin, files: [] };
       for (const p of walkFiles(dir, [])) {
         const size = fs.statSync(p).size;
         total += size;
@@ -549,6 +723,13 @@ function checkMcp(tool, input, cwd) {
   if (!READ_ACTION.test(act) && BANNED_CLAIMS.test(strings.join(NL))) {
     return 'That request contains a weight-loss, detox, appetite, cure or "clinically proven" claim, which is never allowed. Remove it.';
   }
+  // The guard's own folder, on every server (the safe ones and Microsoft 365 included): a call that is
+  // not a read, or one that downloads (it saves a file), may not name a path there.
+  if (!READ_ACTION.test(act) || /download/.test(act)) {
+    const roots = pluginRoots();
+    const pathLike = (s) => s.length < 1024 && (/[\\/~]/.test(s) || /\.[a-z0-9]{1,5}$/i.test(s));
+    if (strings.some((s) => roots.some((r) => norm(s).includes(r)) || (pathLike(s) && inPlugin(s, cwd)))) return PLUGIN_REASON;
+  }
   if (SAFE_SERVERS.test(server)) return null;
   // A generic Graph caller names no verb: only an explicit GET is a read.
   if (/lokka|graph/.test(server) || /lokka/.test(act)) {
@@ -584,7 +765,10 @@ function decide(event) {
 /** Tests only (their own process): stand in for the owner's code folder. */
 function setDevRootsForTests(roots) { testRoots = roots; }
 
-module.exports = { decide, checkWrite, checkNewFile, isTextFile, norm, sha1, walkFiles, snapId, CALENDAR, BANNED_CLAIMS, setDevRootsForTests };
+/** Tests only (their own process): plugin folders protected IN ADDITION to the real one. */
+function setPluginRootsForTests(roots) { testPluginRoots = roots; }
+
+module.exports = { decide, checkWrite, checkNewFile, isTextFile, norm, sha1, walkFiles, snapId, CALENDAR, BANNED_CLAIMS, PLUGIN_REASON, setDevRootsForTests, setPluginRootsForTests };
 
 if (require.main === module) {
   let buf = '';

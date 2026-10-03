@@ -15,6 +15,10 @@
  *                                        that fails -> put back
  *   - a new file anywhere in those folders (new sub-folders included) where new files
  *     are not allowed -> removed (this command made it)
+ *   - the guard's own plugin folder (copied before every shell command but a plain read):
+ *     any change is put back, any new file removed
+ * It runs after a tool call that FAILED too (PostToolUseFailure): a command that changes a file
+ * and then exits with an error is checked like any other.
  * Only the snapshot of the call that just finished is checked, so overlapping calls never
  * consume each other's before-state (Codex round 7). A snapshot older than six hours, whose
  * call never reported back, is checked and cleared by the next run.
@@ -42,7 +46,12 @@ function verifyAll(callId) {
     try { manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8')); } catch (e) { continue; }
     const stale = Date.now() - (manifest.created || 0) > STALE_MS;
     if (mine && f !== mine && !stale) continue;
-    for (const dir of manifest.dirs) checkFolder(dir, manifest.cwd, problems);
+    // A stale copy of the guard's own folder is only cleared, never put back: the app may have updated
+    // the plugin in place since, and an hours-old copy would undo that.
+    for (const dir of manifest.dirs) {
+      if (dir.plugin && mine && f !== mine) continue;
+      checkFolder(dir, manifest.cwd, problems);
+    }
     fs.rmSync(manifestPath, { force: true });
     fs.rmSync(manifest.backupDir, { recursive: true, force: true });
   }
@@ -60,7 +69,9 @@ function checkFolder(dir, cwd, problems) {
     }
     const now = fs.readFileSync(e.path);
     if (guard.sha1(now) === e.sha1) continue;
-    const reason = judgeChange(e, now, cwd);
+    // The guard's own folder: every change is put back (marked in the copy, so it does not depend on
+    // which folder this process takes to be the plugin's).
+    const reason = dir.plugin ? guard.PLUGIN_REASON : judgeChange(e, now, cwd);
     if (reason) {
       fs.copyFileSync(e.backup, e.path);
       problems.push(path.basename(e.path) + ': ' + reason + ' The earlier version was put back.');
@@ -70,7 +81,7 @@ function checkFolder(dir, cwd, problems) {
   try { nowFiles = guard.walkFiles(dir.dir, []); } catch (e) { nowFiles = []; }
   for (const p of nowFiles) {
     if (before.has(p)) continue;
-    const reason = guard.checkNewFile(p, cwd);
+    const reason = dir.plugin ? guard.PLUGIN_REASON : guard.checkNewFile(p, cwd);
     if (reason) {
       fs.rmSync(p, { force: true });
       problems.push(path.basename(p) + ' was created where new files are not allowed (' + reason + '), so it was removed.');
