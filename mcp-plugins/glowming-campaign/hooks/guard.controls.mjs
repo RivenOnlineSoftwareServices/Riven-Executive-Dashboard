@@ -35,6 +35,8 @@ const M = [
     ["  if (top.status !== 0 || norm(realLocation(String(top.stdout).trim(), root)) !== norm(realLocation(root, root))) return null;\n", ""]],
   ["D29 included config files are not followed", "a campaign remote in an included config file",
     ["'--show-scope', '--includes'", "'--show-scope', '--no-includes'"]],
+  ["D31 git inherits GIT_* from the hook's environment", "a GIT_DIR in the environment",
+    ["windowsHide: true, env });", "windowsHide: true });"]],
   ["D30 URL rewrites are ignored", "a campaign remote reached through a URL rewrite",
     ["\\t(remote\\.|url\\.|include)/i", "\\t(remote\\.|include)/i"]],
   ["D4 the marker file is ignored (both places)", "named otherwise, with the marker file",
@@ -90,7 +92,7 @@ const M = [
   ["D17 the depth limit still applies there", "dev: a chain of scripts five levels deep",
     ["if (!dev && scripts.tooDeep > 0)", "if (scripts.tooDeep > 0)"]],
   ["D18 hidden code in scripts still refused there", "dev: the test-and-build script",
-    ["if (!dev && HIDDEN_CODE.test(scripts.hiddenText))", "if (HIDDEN_CODE.test(scripts.hiddenText))"]],
+    ["if (!dev && HIDDEN_CODE.test(scripts.text))", "if (HIDDEN_CODE.test(scripts.text))"]],
   ["D19 claim text in shell writes still refused there", "dev: a test fixture that names a banned word",
     ["if (!dev && (redirects || CODE_WRITE", "if ((redirects || CODE_WRITE"]],
   // ---- the type-only import exception
@@ -104,8 +106,9 @@ const M = [
   ["F4 the exception reaches scripts that are not TypeScript", "a type-only import line inside a Python script",
     ["(TS_SCRIPT.test(file) ? part.replace(TYPE_ONLY_IMPORT, '') : part)", "part.replace(TYPE_ONLY_IMPORT, '')"]],
   // ---- hidden code
-  ["F5 a regex's .exec( in a JavaScript script counts as hidden code", "a regex's .exec( is not hidden code",
-    ["(JS_SCRIPT.test(file) ? part.replace(JS_MEMBER_EXEC, '.call_(') : part)", "part"]],
+  // The regex case runs first and depends on the same rule (no member call is exempt).
+  ["F5 a member exec( is exempt (a file's name or a regex receiver trusted)", "a regex's .exec( still counts",
+    ["|\\bexec\\s*\\(|", "|(?<![.\\w$])exec\\s*\\(|"]],
   // The suite stops at its first failure: an earlier case already depends on each bare call.
   ["F6 a bare exec( is no longer caught", "a scratch script that runs code from stdin",
     ["|\\bexec\\s*\\(|", "|(?<![\\s\\S])exec\\s*\\(|"]],
@@ -113,10 +116,6 @@ const M = [
     ["|\\beval\\s*\\(|", "|(?<![\\s\\S])eval\\s*\\(|"]],
   ["F8 eval through the global object is no longer caught", "eval reached through the global object",
     ["|\\beval\\s*\\(|", "|(?<![.\\w$])eval\\s*\\(|"]],
-  ["F9 a member exec( is exempt in every script, Python included", "Python exec through an alias of builtins, in a script",
-    ["(JS_SCRIPT.test(file) ? part.replace(JS_MEMBER_EXEC, '.call_(') : part)", "part.replace(JS_MEMBER_EXEC, '.call_(')"]],
-  ["F15 a member exec( is exempt in the command", "Python exec through an alias of builtins, in the command",
-    ["if (!dev && HIDDEN_CODE.test(cmd))", "if (!dev && HIDDEN_CODE.test(cmd.replace(JS_MEMBER_EXEC, '.call_(')))"]],
   ["F16 exec with a space before the bracket is not caught", "Python exec with a space before the bracket",
     ["|\\bexec\\s*\\(|", "|\\bexec\\(|"]],
   ["F10 atob is no longer caught", "a payload decoded with atob",

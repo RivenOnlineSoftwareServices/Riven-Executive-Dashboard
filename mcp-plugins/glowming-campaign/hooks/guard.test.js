@@ -575,6 +575,12 @@ launchedIn(includedRemote, () => block('a campaign remote in an included config 
 launchedIn(rewrittenRemote, () => block('a campaign remote reached through a URL rewrite: a web request', web(rewrittenRemote)));
 launchedIn(brokenConfig, () => block('a .git/config git refuses: a web request', web(brokenConfig)));
 launchedIn(hollow, () => block('a .git folder that is not a repository: a web request', web(hollow)));
+{
+  // A GIT_DIR in the hook's environment must not point git at another repository's config.
+  process.env.GIT_DIR = path.join(devRepo, '.git');
+  try { launchedIn(renamedClone, () => block('a GIT_DIR in the environment pointing at a code repository: a web request from the campaign clone', web(renamedClone))); }
+  finally { delete process.env.GIT_DIR; }
+}
 launchedIn(campAlias, () => block('a junction with a neutral name into the campaign repository: a web request', web(campAlias)));
 launchedIn(oddLink, () => block('a .git file that is not a worktree link: a web request', web(oddLink)));
 launchedIn(companyCode, () => block('a git checkout inside a company folder: a web request', web(companyCode)));
@@ -631,14 +637,15 @@ block('a web request between commented "import type {" and "} from" lines in a P
   B('python "' + fpFile('wrap.py', ['# import type {', 'import urllib.request', 'urllib.request.urlopen("https://example.com")', '# } from "x"']) + '"'));
 block('a type-only import line inside a Python script is not exempt',
   B('python "' + fpFile('types.py', ['# import type { IncomingMessage } from "node:http"', 'print(1)']) + '"'));
-allow('a regex\'s .exec( is not hidden code', B('node "' + fpFile('rx.js', ['const m = /a(b)/.exec("ab");', 'const re = /c/g; re.exec("c");', 'console.log(m);']) + '"'));
+// Outside a developer's checkout a member exec( counts too: a file's name does not say what runs it.
+block('outside a developer\'s checkout, a regex\'s .exec( still counts', B('node "' + fpFile('rx.js', ['const m = /a(b)/.exec("ab");', 'console.log(m);']) + '"'));
+block('Codex\'s payload in a file named .js, run by Python', B('python "' + fpFile('payload.js', ['import builtins as b', 'b.exec(bytes.fromhex("7072696e74283432290a").decode())']) + '"'));
 block('a bare exec( still is', B('python "' + fpFile('run.py', ['code = open("x.py").read()', 'exec(code)']) + '"'));
 block('Python exec through an alias of builtins, in the command (Codex)',
   B('python -c "import builtins as b; b.exec(bytes.fromhex(\'7072696e74283432290a\').decode())"'));
 block('Python exec through an alias of builtins, in a script', B('python "' + fpFile('alias.py', ['import builtins as b', 'b.exec(bytes.fromhex("7072696e74283432290a").decode())']) + '"'));
 block('Python exec with a space before the bracket', B('python "' + fpFile('spaced.py', ['exec (open("x.py").read())']) + '"'));
-block('a child process given a command decoded from hex', B('node "' + fpFile('hex.js', ['require("child_process").exec(Buffer.from(process.argv[2], "hex").toString());']) + '"'));
-allow('a regex\'s .exec( in a TypeScript script is not hidden code', B('node "' + fpFile('rx.ts', ['const m: RegExpExecArray | null = /a(b)/.exec("ab");', 'console.log(m);']) + '"'));
+block('a child process given a command decoded from hex', B('node "' + fpFile('hex.js', ['const c = Buffer.from(process.argv[2], "hex").toString();', 'require("child_process").execSync(c);']) + '"'));
 block('a bare eval( still is', B('node "' + fpFile('ev.js', ['eval(process.argv[2]);']) + '"'));
 block('eval reached through the global object', B('node "' + fpFile('gev.js', ['globalThis.eval(process.argv[2]);']) + '"'));
 block('exec reached through the builtins', B('python "' + fpFile('bexec.py', ['import builtins', 'builtins.exec(open("x").read())']) + '"'));

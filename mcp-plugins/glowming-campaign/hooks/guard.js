@@ -259,12 +259,12 @@ const SHELL_SCRIPT = /\.(sh|bash|ps1|psm1|bat|cmd)$/i;
 // Shell redirection into a file: > >> 2> 2>> &> &>>, but not 2>&1. Judged on the COMMAND only
 // (scripts contain arrows and comparisons that are not redirects).
 const REDIRECT = /(^|[^=\-<>])(&|\d)?>{1,2}(?![&>=])/;
-// Code that hides what it runs: blocked everywhere, Anton never needs it. Every `eval(` and every
-// `exec(` counts, bare or as a member (`import builtins as b; b.exec(...)` runs code). Only in a
-// JavaScript or TypeScript script is a member `.exec(` taken out first (JS_MEMBER_EXEC): there it is a
-// regex's `pattern.exec(text)` or a child process given a visible command, never code. Decoding a
-// payload (atob, a Buffer from base64 or hex, a new Function) counts too, whatever then runs it
-// (Claude review and Codex, 2026-10-03).
+// Code that hides what it runs: blocked everywhere outside a developer's checkout, Anton never needs
+// it. Every `eval(` and every `exec(` counts, bare or as a member, a regex's `pattern.exec(` included:
+// a file's name says nothing about what runs it (`python x.js` runs Python, where `b.exec(` runs
+// code), so no member call is exempt (Codex and Claude review, 2026-10-03; the code repositories that
+// needed regex .exec( are developer's checkouts). Decoding a payload (atob, a Buffer from base64 or
+// hex, a new Function) counts too, whatever then runs it.
 const HIDDEN_CODE = /-e(nc|ncodedcommand)?\s+[a-z0-9+/=]{16,}|-encodedcommand|frombase64string|base64\s+(-d|--decode)|b64decode|\beval\s*\(|\bexec\s*\(|\batob\(|\bfrom\s*\([^)]*,\s*['"](?:base64(?:url)?|hex)['"]|\bnew\s+Function\s*\(|\biex\b|invoke-expression|(^|[\s;&|])(python3?|py|node|ruby|perl)\s+-(\s|$)|(^|[\s;&|])(python3?|py|node)\s*<|\b(bash|sh|zsh)\s+-s\b|-command\s+-(\s|$)|(^|[\s;&|(])(bash|sh|zsh|dash|ksh|pwsh|powershell|cmd)(\.exe)?\s*<|\|\s*(bash|sh|zsh|dash|ksh|pwsh|powershell|cmd|python3?|py|node|ruby|perl|php)(\.exe)?(\s|$)/i;
 // A TypeScript type-only import or re-export (`import type { IncomingMessage } from "node:http"`) is
 // erased before the code runs: it names a module's types and makes no request, so NET_CALL ignores it
@@ -272,8 +272,6 @@ const HIDDEN_CODE = /-e(nc|ncodedcommand)?\s+[a-z0-9+/=]{16,}|-encodedcommand|fr
 // pattern can never swallow a command or a call (Claude review 2026-10-03).
 const TYPE_ONLY_IMPORT = /\b(?:import|export)\s+type\s+(?:\{[\s\w$,]*\}\s*|\*\s+as\s+[\w$]+\s+|[\w$]+\s+)from\s*(['"])[^'"\s]+\1/g;
 const TS_SCRIPT = /\.(ts|mts|cts|tsx)$/i;
-const JS_SCRIPT = /\.(js|mjs|cjs|jsx|ts|mts|cts|tsx)$/i;
-const JS_MEMBER_EXEC = /\.\s*exec\s*\(/g;
 const SCRIPT_FILE = /(?:"([^"]+\.(?:py|js|mjs|cjs|jsx|ts|mts|cts|tsx|ps1|psm1|sh|bash|bat|cmd|pl|rb|php))"|'([^']+\.(?:py|js|mjs|cjs|jsx|ts|mts|cts|tsx|ps1|psm1|sh|bash|bat|cmd|pl|rb|php))'|([^\s'"]+\.(?:py|js|mjs|cjs|jsx|ts|mts|cts|tsx|ps1|psm1|sh|bash|bat|cmd|pl|rb|php)))(?=$|[\s;&|)\],}])/gi;
 
 /**
@@ -284,7 +282,6 @@ const SCRIPT_FILE = /(?:"([^"]+\.(?:py|js|mjs|cjs|jsx|ts|mts|cts|tsx|ps1|psm1|sh
 function scriptsRun(cmd, cwd) {
   let text = '';
   let netText = ''; // the same, with a TypeScript script's type-only imports taken out (for NET_CALL)
-  let hiddenText = ''; // the same, with a JavaScript or TypeScript script's member .exec( taken out (for HIDDEN_CODE)
   let shellText = '';
   let unreadable = 0;
   let tooDeep = 0; // scripts the guard cannot fully read: more than three levels down, or over 500 KB
@@ -307,14 +304,13 @@ function scriptsRun(cmd, cwd) {
         const part = body;
         text += NL + part;
         netText += NL + (TS_SCRIPT.test(file) ? part.replace(TYPE_ONLY_IMPORT, '') : part);
-        hiddenText += NL + (JS_SCRIPT.test(file) ? part.replace(JS_MEMBER_EXEC, '.call_(') : part);
         if (SHELL_SCRIPT.test(file)) shellText += NL + part;
         next.push(part);
       }
     }
     frontier = next;
   }
-  return { text, netText, hiddenText, shellText, unreadable, tooDeep };
+  return { text, netText, shellText, unreadable, tooDeep };
 }
 
 // Campaign work: a repository whose path, main repository's path or remote (as git resolves it) says
@@ -393,7 +389,10 @@ function devRepository(root) {
  * does not see `root` as the top of a repository, or cannot read its config (fail closed).
  */
 function ownGitSettings(root) {
-  const run = (args) => childProcess.spawnSync('git', ['-C', root, ...args], { encoding: 'utf8', timeout: 5000, windowsHide: true });
+  // No GIT_* variable from the hook's environment (a persisted GIT_DIR would point git at another
+  // repository's config while it still reports `root` as the top).
+  const env = Object.fromEntries(Object.entries(process.env).filter(([k]) => !/^GIT_/i.test(k)));
+  const run = (args) => childProcess.spawnSync('git', ['-C', root, ...args], { encoding: 'utf8', timeout: 5000, windowsHide: true, env });
   const top = run(['rev-parse', '--show-toplevel']);
   if (top.status !== 0 || norm(realLocation(String(top.stdout).trim(), root)) !== norm(realLocation(root, root))) return null;
   const list = run(['config', '--list', '--show-scope', '--includes']);
@@ -447,7 +446,7 @@ function checkBash(input, cwd, callId) {
   const inFolder = isProtected(norm(cwd || ''));
   // Anywhere, not only near company folders: hidden code could make a web request or reach a
   // company file the guard never sees (Codex round 7).
-  if (!dev && HIDDEN_CODE.test(scripts.hiddenText)) {
+  if (!dev && HIDDEN_CODE.test(scripts.text)) {
     return 'That script hides or streams the code it runs (eval/exec/encoded/stdin), so it cannot be checked. Write the code itself into the script.';
   }
   if ((isProtected(nfull) || inFolder) && REMOVE_SHELL.test(full)) {
