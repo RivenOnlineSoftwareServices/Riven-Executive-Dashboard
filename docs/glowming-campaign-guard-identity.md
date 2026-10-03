@@ -1,7 +1,7 @@
 # Design note: the campaign guard is for Anton, Etienne and Louis, never for Riaan
 
-Rule #41 (a guard is a risk surface). Plugin `glowming-campaign`, 2026-10-03. Round 7: Codex design
-rounds 1-6 (C, D, E, F, G, H) answered inline.
+Rule #41 (a guard is a risk surface). Plugin `glowming-campaign`, 2026-10-03. Round 8: Codex design
+rounds 1-7 (C, D, E, F, G, H, I) answered inline.
 
 ## Why
 
@@ -32,6 +32,9 @@ Forging an identity variable is deliberate, so it is in the same class as disabl
       origin (D2).
    3. An address from any other launcher (plain CLI, cloud): Riaan's -> **off**; any other -> **full**.
    4. Nothing usable -> **campaign**.
+
+   Every lookup is best-effort (I2): `os.userInfo()` or `os.hostname()` throwing counts as no machine
+   match, never as an error; the identity file write is best-effort and silent.
 2. **off:** `guard.js` allows; `post.js` returns before any check, put-back or warning.
 3. **Tamper rule** (full: all of it; campaign: settings files and plugin-disable commands, G4), before scope.
 4. **full:** the 0.1.3 guard unchanged, with #19's step-aside in a developer's checkout.
@@ -117,6 +120,12 @@ left untouched, whatever its session. A snapshot older than six hours is deleted
 anything. A post hook with no `tool_use_id` processes nothing and only deletes expired snapshots: the
 current "no id, check every snapshot" fallback (`post.js` `verifyAll` with no id) is removed.
 `post.js` also runs on `PostToolUseFailure`. In off mode `post.js` touches no snapshot.
+**I1:** a shell command that needs a snapshot but arrives with no usable `tool_use_id` is refused
+before it runs ("cannot be checked afterwards"), so no snapshot is ever taken that no post hook will
+process. **I4:** displaced bytes go to a unique folder per post-check
+(`<home>/.glowming-guard-recovery/<date-time>-<call id>/<n>-<file name>` plus a `map.json` of
+original paths); each file is copied there and the copy confirmed BEFORE it is put back or removed;
+if the copy fails, that file and its snapshot are left as they are and the failure is reported.
 
 **D5, concurrent writers.** Riaan never runs the guard, so his own sessions never restore anything.
 A guarded session on ANOTHER machine compares a folder before and after one shell command; a change
