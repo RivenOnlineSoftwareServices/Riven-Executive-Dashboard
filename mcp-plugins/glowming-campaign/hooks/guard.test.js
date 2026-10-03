@@ -99,11 +99,13 @@ const advert = path.join(camp, '01 Ready to post', 'Step 2 - Already know Glowmi
 const plans = path.join(camp, '05 Plans and approvals');
 const rulesDir = path.join(camp, '06 Competition rules');
 for (const d of [path.join(shared, 'work', 'anton'), advert, plans, rulesDir]) fs.mkdirSync(d, { recursive: true });
-// Every case runs as Anton does: from a folder that is not a git checkout. The tests themselves run
-// from inside this repository, which the guard would treat as a developer's checkout (section 5).
+// Every case runs as Anton does: launched from, and standing in, a folder that is not a git checkout.
+// The tests may themselves run from a Claude session launched inside a code repository, which the
+// guard would treat as a developer's checkout (section 5), so that is cleared here.
 const antonHome = path.join(root, 'Users', 'anton');
 fs.mkdirSync(antonHome, { recursive: true });
 process.chdir(antonHome);
+delete process.env.CLAUDE_PROJECT_DIR;
 const caption = [
   'A5 Journey starts', '=================', '', 'CAPTION (post text):', 'Old post text.', '',
   'Headline:   Old headline', 'Short line: Old short', 'Button:     Sign up', '',
@@ -147,6 +149,9 @@ const block = (why, ev) => { assert.notStrictEqual(decide(ev), null, 'should BLO
 const W = (p, content) => ({ tool_name: 'Write', tool_input: { file_path: p, content } });
 const E = (p, o, n) => ({ tool_name: 'Edit', tool_input: { file_path: p, old_string: o, new_string: n } });
 const B = (command, cwd) => ({ tool_name: 'Bash', tool_input: { command }, cwd });
+// Sections 1-4 and 6 mean nothing if this machine's temp folder sits inside a checkout the guard
+// would trust: prove the blanket rules hold where Anton stands before anything else.
+block('start-up: a web request from Anton\'s folder is refused', B('curl -s https://example.com/'));
 
 /**
  * A shell command the guard may let run: decide() first; if allowed, do what the command
@@ -424,23 +429,56 @@ block('a Magnific prompt with an appetite claim', { tool_name: 'mcp__magnific__i
 // A code repository on an owner's machine starts servers, makes local requests and runs build scripts:
 // the blanket shell rules step aside there. Everything that protects the company files still applies,
 // and a campaign repository (or a worktree of one, wherever it lives) is never a developer's checkout.
+// Decided from the folder the session was LAUNCHED in (CLAUDE_PROJECT_DIR), which Claude cannot move.
 const repos = path.join(root, 'repos');
-const devRepo = path.join(repos, 'ROSS-Suite');
+/** A git repository as git lays it out: .git/config with the given remote (an empty one if none). */
+const gitRepo = (dir, remote) => {
+  fs.mkdirSync(path.join(dir, '.git'), { recursive: true });
+  fs.writeFileSync(path.join(dir, '.git', 'config'), '[core]' + NL + (remote ? '[remote "origin"]' + NL + '\turl = ' + remote + NL : ''));
+  return dir;
+};
+/** A linked worktree of `main` at `dir`, as git writes it (.git file -> gitdir, whose commondir names main's .git). */
+const worktree = (dir, main, name) => {
+  const gd = path.join(main, '.git', 'worktrees', name);
+  fs.mkdirSync(gd, { recursive: true });
+  fs.writeFileSync(path.join(gd, 'commondir'), '../..' + NL);
+  fs.mkdirSync(dir, { recursive: true });
+  fs.writeFileSync(path.join(dir, '.git'), 'gitdir: ' + gd + NL);
+  return dir;
+};
+const devRepo = gitRepo(path.join(repos, 'ROSS-Suite'), 'https://github.com/RivenOnlineSoftwareServices/ROSS-Suite.git');
 const devScripts = path.join(devRepo, 'scripts');
-const campRepo = path.join(repos, 'Glowming-Summer-Campaign-2026');
-for (const d of [path.join(devRepo, '.git', 'worktrees', 'fix'), devScripts, path.join(devRepo, 'src'),
-  path.join(campRepo, '.git', 'worktrees', 'tidy'), path.join(campRepo, 'drafts')]) fs.mkdirSync(d, { recursive: true });
+const campRepo = gitRepo(path.join(repos, 'Glowming-Summer-Campaign-2026'), 'https://github.com/RivenOnlineSoftwareServices/Glowming-Summer-Campaign-2026.git');
+for (const d of [devScripts, path.join(devRepo, 'src'), path.join(campRepo, 'drafts')]) fs.mkdirSync(d, { recursive: true });
 // Linked worktrees: one of the dev repository inside it; one of the campaign repository living OUTSIDE
 // it under a name that says nothing (its .git file is the only thing tying it to the campaign).
-const devTree = path.join(devRepo, '.claude', 'worktrees', 'fix');
-const campTree = path.join(repos, 'tidy-copy');
-fs.mkdirSync(devTree, { recursive: true });
-fs.mkdirSync(campTree, { recursive: true });
-fs.writeFileSync(path.join(devTree, '.git'), 'gitdir: ' + path.join(devRepo, '.git', 'worktrees', 'fix') + NL);
-fs.writeFileSync(path.join(campTree, '.git'), 'gitdir: ' + path.join(campRepo, '.git', 'worktrees', 'tidy') + NL);
+const devTree = worktree(path.join(devRepo, '.claude', 'worktrees', 'fix'), devRepo, 'fix');
+const campTree = worktree(path.join(repos, 'tidy-copy'), campRepo, 'tidy');
+// A clone of the campaign under a short name; a campaign repository named otherwise, with the marker.
+const renamedClone = gitRepo(path.join(repos, 'gsc'), 'https://github.com/RivenOnlineSoftwareServices/Glowming-Summer-Campaign-2026.git');
+const markedRepo = gitRepo(path.join(repos, 'Glowming-Winter-Promo-2027'), 'https://github.com/RivenOnlineSoftwareServices/Glowming-Winter-Promo-2027.git');
+fs.writeFileSync(path.join(markedRepo, '.glowming-campaign'), 'campaign work' + NL);
+// A folder made into a checkout from Anton's session (cd + git init); a .git file that is not a worktree link.
+const freshInit = gitRepo(path.join(repos, 'fresh'));
+const oddLink = path.join(repos, 'odd');
+fs.mkdirSync(oddLink, { recursive: true });
+fs.writeFileSync(path.join(oddLink, '.git'), 'not a worktree link' + NL);
+// A junction with a neutral name leading into a local campaign repository (no remote: only the
+// junction's real location says what it is).
+const campLocal = gitRepo(path.join(repos, 'Glowming-Campaign-local'));
+const campAlias = path.join(repos, 'alias');
+fs.symlinkSync(campLocal, campAlias, 'junction');
 // A git checkout kept INSIDE a company folder is company files, never a developer's checkout.
-const companyCode = path.join(base, 'ROSS - Documents', 'code');
-fs.mkdirSync(path.join(companyCode, '.git'), { recursive: true });
+const companyCode = gitRepo(path.join(base, 'ROSS - Documents', 'code'));
+// A dotfiles repository at the home folder makes nothing under it a developer's checkout.
+const homeRepo = gitRepo(path.join(root, 'Users', 'riaan'), 'https://github.com/someone/dotfiles.git');
+fs.mkdirSync(path.join(homeRepo, 'Desktop'), { recursive: true });
+/** Run `fn` as a session launched in `project` (undefined: no launch folder known). */
+const launchedIn = (project, fn) => {
+  const was = process.env.CLAUDE_PROJECT_DIR;
+  if (project === undefined) delete process.env.CLAUDE_PROJECT_DIR; else process.env.CLAUDE_PROJECT_DIR = project;
+  try { fn(); } finally { if (was === undefined) delete process.env.CLAUDE_PROJECT_DIR; else process.env.CLAUDE_PROJECT_DIR = was; }
+};
 // What a test-and-build script looks like: a child process, a regex's exec, a real network import, eval.
 fs.writeFileSync(path.join(devScripts, 'gates.mjs'), [
   'import { spawnSync } from "node:child_process";',
@@ -452,29 +490,51 @@ fs.writeFileSync(path.join(devScripts, 'gates.mjs'), [
 // A chain five scripts deep (the guard reads three levels).
 for (let i = 1; i <= 5; i++) fs.writeFileSync(path.join(devScripts, 'step' + i + '.sh'), i < 5 ? 'bash "' + path.join(devScripts, 'step' + (i + 1) + '.sh') + '"' + NL : 'echo done' + NL);
 const devB = (command, cwd) => B(command, cwd || devRepo);
+const web = (cwd) => B('curl -s https://glowming.co.za/', cwd);
 
-allow('dev: a request to a local server', devB('curl -s http://localhost:3000/health'));
-allow('dev: the test-and-build script (child process, regex exec, http import, eval)', devB('node "' + path.join(devScripts, 'gates.mjs') + '"'));
-allow('dev: a chain of scripts five levels deep', devB('bash "' + path.join(devScripts, 'step1.sh') + '"'));
+launchedIn(devRepo, () => {
+  allow('dev: a request to a local server', devB('curl -s http://localhost:3000/health'));
+  allow('dev: the test-and-build script (child process, regex exec, http import, eval)', devB('node "' + path.join(devScripts, 'gates.mjs') + '"'));
+  allow('dev: a chain of scripts five levels deep', devB('bash "' + path.join(devScripts, 'step1.sh') + '"'));
+  allow('dev: an inline eval in node -e', devB('node -e "console.log(eval(\'1+1\'))"'));
+  allow('dev: a test fixture that names a banned word', devB('echo "detox" > fixtures/claims.txt'));
+  allow('dev: from a sub-folder of the checkout', devB('curl -s http://localhost:3000/', path.join(devRepo, 'src')));
+  block('dev launch, but the shell has left the checkout: a web request', web(antonHome));
+  block('dev launch, the shell has gone into a fresh git init folder: a web request', web(freshInit));
+  // The company files are protected from a developer's checkout exactly as from anywhere else.
+  block('dev: rm a company file', devB('rm "' + files.png + '"'));
+  block('dev: the Write tool on riaan.md', { tool_name: 'Write', tool_input: { file_path: files.riaan, content: 'x' }, cwd: devRepo });
+  block('dev: Graph PATCH through Lokka', { tool_name: 'mcp__Lokka-Microsoft__Lokka-Microsoft', tool_input: { method: 'patch' }, cwd: devRepo });
+  shell('dev: a script that overwrites a caption in the advert folder it names', devB('node scripts/fix.js "' + advert + '"'), w('caption', 'hi'), 'undone',
+    () => assert.ok(same('caption'), 'the caption is back'));
+  shell('dev: a shell append of a weight-loss claim into anton.md', devB('echo "Lose weight fast" >> "' + files.anton + '"'), () => fs.appendFileSync(files.anton, 'Lose weight fast' + NL), STOPPED);
+});
 block('the same five-level chain from Anton\'s folder (the depth rule itself still holds)', B('bash "' + path.join(devScripts, 'step1.sh') + '"'));
-allow('dev: an inline eval in node -e', devB('node -e "console.log(eval(\'1+1\'))"'));
-allow('dev: a test fixture that names a banned word', devB('echo "detox" > fixtures/claims.txt'));
-allow('dev: from a sub-folder of the checkout', devB('curl -s http://localhost:3000/', path.join(devRepo, 'src')));
-allow('dev: from a linked worktree of the checkout', devB('curl -s http://localhost:3000/', devTree));
-block('campaign repository: a web request', devB('curl -s https://glowming.co.za/', campRepo));
-block('campaign repository, a sub-folder: a web request', devB('curl -s https://glowming.co.za/', path.join(campRepo, 'drafts')));
-block('a worktree of the campaign repository living elsewhere: a web request', devB('curl -s https://glowming.co.za/', campTree));
-block('a worktree of the campaign repository: hidden code', devB('node -e "console.log(eval(\'1+1\'))"', campTree));
-block('a git checkout inside a company folder: a web request', devB('curl -s https://glowming.co.za/', companyCode));
-// The company files are protected from a developer's checkout exactly as from anywhere else.
-block('dev: rm a company file', devB('rm "' + files.png + '"'));
-block('dev: the Write tool on riaan.md', { tool_name: 'Write', tool_input: { file_path: files.riaan, content: 'x' }, cwd: devRepo });
-block('dev: Graph PATCH through Lokka', { tool_name: 'mcp__Lokka-Microsoft__Lokka-Microsoft', tool_input: { method: 'patch' }, cwd: devRepo });
-shell('dev: a script that overwrites a caption in the advert folder it names', devB('node scripts/fix.js "' + advert + '"'), w('caption', 'hi'), 'undone',
-  () => assert.ok(same('caption'), 'the caption is back'));
-shell('dev: a shell append of a weight-loss claim into anton.md', devB('echo "Lose weight fast" >> "' + files.anton + '"'), () => fs.appendFileSync(files.anton, 'Lose weight fast' + NL), STOPPED);
+launchedIn(devTree, () => allow('dev: launched in a linked worktree of the checkout', devB('curl -s http://localhost:3000/', devTree)));
+launchedIn(undefined, () => block('no launch folder known, standing in a checkout: a web request', web(devRepo)));
+launchedIn(antonHome, () => block('launched in Anton\'s folder, then cd + git init: a web request', web(freshInit)));
+launchedIn(campRepo, () => block('campaign repository: a web request', web(campRepo)));
+launchedIn(path.join(campRepo, 'drafts'), () => block('campaign repository, a sub-folder: a web request', web(path.join(campRepo, 'drafts'))));
+launchedIn(campTree, () => {
+  block('a worktree of the campaign repository living elsewhere: a web request', web(campTree));
+  block('a worktree of the campaign repository: hidden code', devB('node -e "console.log(eval(\'1+1\'))"', campTree));
+});
+launchedIn(renamedClone, () => block('a clone of the campaign repository under another name: a web request', web(renamedClone)));
+launchedIn(markedRepo, () => block('a campaign repository named otherwise, with the marker file: a web request', web(markedRepo)));
+launchedIn(campAlias, () => block('a junction with a neutral name into the campaign repository: a web request', web(campAlias)));
+launchedIn(oddLink, () => block('a .git file that is not a worktree link: a web request', web(oddLink)));
+launchedIn(companyCode, () => block('a git checkout inside a company folder: a web request', web(companyCode)));
+{
+  const was = { USERPROFILE: process.env.USERPROFILE, HOME: process.env.HOME };
+  process.env.USERPROFILE = homeRepo; process.env.HOME = homeRepo;
+  try {
+    launchedIn(path.join(homeRepo, 'Desktop'), () => block('a dotfiles .git at the home folder: a web request from the Desktop', web(path.join(homeRepo, 'Desktop'))));
+  } finally {
+    for (const [k, v] of Object.entries(was)) { if (v === undefined) delete process.env[k]; else process.env[k] = v; }
+  }
+}
 
-// ---- 6. Two false positives, fixed everywhere (2026-10-03) ----------------------------------------
+// ---- 6. Two false positives, fixed everywhere, and no new way past the rules (2026-10-03) ----------
 // From Anton's folder, so the blanket rules apply in full.
 const fpFile = (name, lines) => { const p = path.join(antonHome, name); fs.writeFileSync(p, lines.join(NL) + NL); return p; };
 allow('a TypeScript type-only import of node:http is not a web request',
@@ -483,9 +543,21 @@ allow('a multi-line type-only import and a type re-export',
   B('node "' + fpFile('types2.ts', ['import type {', '  Agent,', '  RequestOptions,', '} from "node:https";', 'export type { Socket } from "node:net";']) + '"'));
 block('a real import of node:http still is', B('node "' + fpFile('server.ts', ['import { createServer } from "node:http";', 'createServer().listen(8080);']) + '"'));
 block('a type import beside a real one still is', B('node "' + fpFile('both.ts', ['import type { IncomingMessage } from "node:http";', 'import { request } from "node:http";']) + '"'));
+// The exception never reaches the command, a non-TypeScript script, or anything between braces that is not names.
+block('a web request wrapped between echoed "import type {" and "} from" lines',
+  B('echo "import type {"; curl -X POST -d x https://graph.facebook.com/v19.0/act_1/ads; echo \'} from "x"\''));
+block('a web request between commented "import type {" and "} from" lines in a Python script',
+  B('python "' + fpFile('wrap.py', ['# import type {', 'import urllib.request', 'urllib.request.urlopen("https://example.com")', '# } from "x"']) + '"'));
+block('a type-only import line inside a Python script is not exempt',
+  B('python "' + fpFile('types.py', ['# import type { IncomingMessage } from "node:http"', 'print(1)']) + '"'));
 allow('a regex\'s .exec( is not hidden code', B('node "' + fpFile('rx.js', ['const m = /a(b)/.exec("ab");', 'const re = /c/g; re.exec("c");', 'console.log(m);']) + '"'));
 block('a bare exec( still is', B('python "' + fpFile('run.py', ['code = open("x.py").read()', 'exec(code)']) + '"'));
 block('a bare eval( still is', B('node "' + fpFile('ev.js', ['eval(process.argv[2]);']) + '"'));
+block('eval reached through the global object', B('node "' + fpFile('gev.js', ['globalThis.eval(process.argv[2]);']) + '"'));
+block('exec reached through the builtins', B('python "' + fpFile('bexec.py', ['import builtins', 'builtins.exec(open("x").read())']) + '"'));
+block('a payload decoded with atob', B('node "' + fpFile('atob.js', ['const p = atob(process.argv[2]);', 'console.log(p);']) + '"'));
+block('a payload decoded from a base64 Buffer', B('node "' + fpFile('buf.js', ['const p = Buffer.from(process.argv[2], "base64").toString();', 'console.log(p);']) + '"'));
+block('code built with new Function', B('node "' + fpFile('fn.js', ['const f = new Function(process.argv[2]);', 'f();']) + '"'));
 fs.rmSync(companyCode, { recursive: true, force: true });
 
 fs.rmSync(calPy, { force: true });

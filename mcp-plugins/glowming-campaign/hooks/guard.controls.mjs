@@ -1,7 +1,8 @@
-// Negative controls for guard.js (developer's checkouts and the two false-positive fixes, 2026-10-03):
-// each mutation removes one rule from a COPY of guard.js; guard.test.js runs against the copy
-// (GUARD_PATH) and must fail, on the named case. A mutation whose find text is missing (or not unique)
-// is NOT-APPLIED, never a pass. Run from the plugin folder: node hooks/guard.controls.mjs
+// Negative controls for guard.js (developer's checkouts, the two false-positive fixes, and the Claude
+// review's findings, 2026-10-03): each mutation removes one rule (every layer of it) from a COPY of
+// guard.js; guard.test.js runs against the copy (GUARD_PATH) and must fail, on the named case. A
+// mutation whose find text is missing (or not unique) is NOT-APPLIED, never a pass.
+// Run from the plugin folder: node hooks/guard.controls.mjs
 import { readFileSync, writeFileSync, mkdtempSync, rmSync } from "node:fs";
 import { spawnSync } from "node:child_process";
 import { join, dirname } from "node:path";
@@ -16,44 +17,87 @@ const original = readFileSync(join(HOOKS, "guard.js"), "utf8").split("\r\n").joi
 
 // [name, expected failing case (substring of its assertion message), [find, replace]...]
 const M = [
+  // ---- who counts as a developer's checkout
   ["D1 nothing is a developer's checkout", "dev: a request to a local server",
     ["function devCheckout(cwd) {\n", "function devCheckout(cwd) {\n  return false;\n"]],
-  ["D2 a campaign repository counts as a developer's checkout", "campaign repository: a web request",
-    ["if (isProtected(norm(dir)) || CAMPAIGN_REPO.test(norm(dir))) return false;", "if (isProtected(norm(dir))) return false;"]],
-  ["D3 a worktree's link to the campaign repository is ignored", "a worktree of the campaign repository living elsewhere",
-    ["if (st.isFile()) {", "if (false) {"]],
-  ["D4 a checkout inside a company folder counts (both layers)", "a git checkout inside a company folder",
-    ["  if (isProtected(norm(where))) return false;\n", ""],
-    ["if (isProtected(norm(dir)) || CAMPAIGN_REPO", "if (false || CAMPAIGN_REPO"]],
-  ["D5 a developer's checkout may delete company files", "dev: rm a company file",
+  ["D2 a campaign repository is judged by nothing (name, main repository, remote)", "campaign repository: a web request",
+    ["isProtected(norm(root)) || CAMPAIGN_REPO.test(norm(root)) ||", "isProtected(norm(root)) ||"],
+    ["isProtected(norm(gitDir)) || CAMPAIGN_REPO.test(norm(gitDir)) ||", "isProtected(norm(gitDir)) ||"],
+    ["return config !== null && !CAMPAIGN_REMOTE.test(config);", "return config !== null;"]],
+  ["D3 a campaign clone under another name (the remote is ignored)", "a clone of the campaign repository under another name",
+    ["return config !== null && !CAMPAIGN_REMOTE.test(config);", "return config !== null;"]],
+  ["D4 the marker file is ignored (both places)", "named otherwise, with the marker file",
+    [" || fs.existsSync(path.join(root, CAMPAIGN_MARKER))) return false;", ") return false;"],
+    [" || fs.existsSync(path.join(mainRoot, CAMPAIGN_MARKER))) return false;", ") return false;"]],
+  ["D5 a worktree is judged by its own folder only", "a worktree of the campaign repository living elsewhere",
+    ["  if (st.isFile()) {\n", "  if (st.isFile()) return true;\n  if (false) {\n"]],
+  ["D6 a checkout inside a company folder counts (every layer)", "a git checkout inside a company folder",
+    ["  if (isProtected(norm(project))) return false;\n", ""],
+    ["if (isProtected(norm(root)) || CAMPAIGN_REPO", "if (CAMPAIGN_REPO"],
+    ["if (isProtected(norm(gitDir)) || CAMPAIGN_REPO", "if (CAMPAIGN_REPO"],
+    ["  if (isProtected(norm(where))) return false;\n", ""]],
+  ["D7 no launch folder: the shell's folder is used instead", "no launch folder known",
+    ["const launched = process.env.CLAUDE_PROJECT_DIR;", "const launched = process.env.CLAUDE_PROJECT_DIR || cwd;"]],
+  ["D8 the shell's folder decides, not the launch folder", "the shell has gone into a fresh git init folder",
+    ["const project = realLocation(launched, process.cwd());", "const project = realLocation(cwd || launched, process.cwd());"]],
+  ["D9 the shell may leave the checkout", "the shell has left the checkout",
+    ["return (norm(where) + '/').startsWith(norm(root).replace(/\\/?$/, '/'));", "return true;"]],
+  ["D10 a .git at the home folder counts", "a dotfiles .git at the home folder",
+    [" || norm(root) === norm(realLocation(os.homedir(), process.cwd()))", ""]],
+  ["D11 a junction is not followed (every place)", "a junction with a neutral name",
+    ["const project = realLocation(launched, process.cwd());", "const project = path.resolve(launched);"],
+    ["  gitDir = realLocation(gitDir, root);\n", ""],
+    ["const where = realLocation(cwd || launched, process.cwd());", "const where = path.resolve(cwd || launched);"]],
+  ["D12 a .git file that is not a worktree link counts", "a .git file that is not a worktree link",
+    ["if (!link) return false;", "if (!link) return true;"]],
+  // ---- what still holds in a developer's checkout
+  ["D13 a developer's checkout may delete company files", "dev: rm a company file",
     ["if ((isProtected(nfull) || inFolder) && REMOVE_SHELL.test(full))", "if (!dev && (isProtected(nfull) || inFolder) && REMOVE_SHELL.test(full))"]],
-  ["D6 a developer's checkout takes no copy of the company folders", "dev: a script that overwrites a caption",
+  ["D14 a developer's checkout takes no copy of the company folders", "dev: a script that overwrites a caption",
     ["if (!(isProtected(nfull) || inFolder)) return null;", "if (dev || !(isProtected(nfull) || inFolder)) return null;"]],
-  ["D7 web requests still refused in a developer's checkout", "dev: a request to a local server",
+  // ---- what steps aside there (each rule on its own)
+  ["D15 web requests still refused in a developer's checkout", "dev: a request to a local server",
     ["!dev && NET_CALL.test(", "NET_CALL.test("]],
-  ["D8 hidden code in the command still refused there", "dev: an inline eval",
+  ["D16 hidden code in the command still refused there", "dev: an inline eval",
     ["if (!dev && HIDDEN_CODE.test(cmd))", "if (HIDDEN_CODE.test(cmd))"]],
-  ["D9 the depth limit still applies there", "dev: a chain of scripts five levels deep",
+  ["D17 the depth limit still applies there", "dev: a chain of scripts five levels deep",
     ["if (!dev && scripts.tooDeep > 0)", "if (scripts.tooDeep > 0)"]],
-  ["D10 hidden code in scripts still refused there", "dev: the test-and-build script",
+  ["D18 hidden code in scripts still refused there", "dev: the test-and-build script",
     ["if (!dev && HIDDEN_CODE.test(scripts.text))", "if (HIDDEN_CODE.test(scripts.text))"]],
-  ["D11 claim text in shell writes still refused there", "dev: a test fixture that names a banned word",
+  ["D19 claim text in shell writes still refused there", "dev: a test fixture that names a banned word",
     ["if (!dev && (redirects || CODE_WRITE", "if ((redirects || CODE_WRITE"]],
+  // ---- the type-only import exception
   ["F1 a type-only import counts as a web request", "type-only import of node:http is not a web request",
-    ["NET_CALL.test(full.replace(TYPE_ONLY_IMPORT, ''))", "NET_CALL.test(full)"]],
-  ["F2 the type-only exception also takes real imports", "a real import of node:http still is",
+    ["NET_CALL.test(cmd + scripts.netText)", "NET_CALL.test(cmd + scripts.text)"]],
+  ["F2 the exception also takes real imports", "a real import of node:http still is",
     ["(?:import|export)\\s+type\\s+(?:", "(?:import|export)\\s+(?:type\\s+)?(?:"]],
-  ["F3 a regex's .exec( counts as hidden code", "a regex's .exec( is not hidden code",
+  ["F3 the exception swallows anything between braces, everywhere (both layers)", "echoed \"import type {\"",
+    ["\\{[\\s\\w$,]*\\}", "\\{[^}]*\\}"],
+    ["NET_CALL.test(cmd + scripts.netText)", "NET_CALL.test((cmd + scripts.netText).replace(TYPE_ONLY_IMPORT, ''))"]],
+  ["F4 the exception reaches scripts that are not TypeScript", "a type-only import line inside a Python script",
+    ["(TS_SCRIPT.test(file) ? part.replace(TYPE_ONLY_IMPORT, '') : part)", "part.replace(TYPE_ONLY_IMPORT, '')"]],
+  // ---- hidden code
+  ["F5 a regex's .exec( counts as hidden code", "a regex's .exec( is not hidden code",
     ["(?<![.\\w$])exec\\(", "\\bexec\\("]],
   // The suite stops at its first failure: an earlier case already depends on each bare call.
-  ["F4 a bare exec( is no longer caught", "a scratch script that runs code from stdin",
+  ["F6 a bare exec( is no longer caught", "a scratch script that runs code from stdin",
     ["(?<![.\\w$])exec\\(", "(?<![\\s\\S])exec\\("]],
-  ["F5 a bare eval( is no longer caught", "a worktree of the campaign repository: hidden code",
-    ["(?<![.\\w$])eval\\(", "(?<![\\s\\S])eval\\("]],
+  ["F7 a bare eval( is no longer caught", "a worktree of the campaign repository: hidden code",
+    ["|\\beval\\(|", "|(?<![\\s\\S])eval\\(|"]],
+  ["F8 eval through the global object is no longer caught", "eval reached through the global object",
+    ["|\\beval\\(|", "|(?<![.\\w$])eval\\(|"]],
+  ["F9 exec through the builtins is no longer caught", "exec reached through the builtins",
+    ["\\b(?:builtins|__builtins__|globalThis|window|self|global)\\s*\\.\\s*exec\\(|", ""]],
+  ["F10 atob is no longer caught", "a payload decoded with atob",
+    ["\\batob\\(|", ""]],
+  ["F11 a base64 Buffer is no longer caught", "a payload decoded from a base64 Buffer",
+    ["\\bfrom\\s*\\([^)]*,\\s*['\"]base64['\"]|", ""]],
+  ["F12 new Function is no longer caught", "code built with new Function",
+    ["\\bnew\\s+Function\\s*\\(|", ""]],
 ];
 
 // The table must still carry its backslashes (Dev Rule #30): F2 looks for a literal backslash-s.
-if (!M[12][2][0].includes(String.fromCharCode(92) + "s")) throw new Error("backslashes lost in the mutation table");
+if (!M.find((m) => m[0].startsWith("F2"))[2][0].includes(String.fromCharCode(92) + "s")) throw new Error("backslashes lost in the mutation table");
 
 let bad = 0;
 try {
@@ -62,7 +106,7 @@ try {
     let applied = true;
     for (const [find, replace] of edits) {
       const n = text.split(find).length - 1;
-      if (n !== 1) { applied = false; console.log(`${name}: NOT-APPLIED (${n} matches for ${JSON.stringify(find.slice(0, 50))})`); break; }
+      if (n !== 1) { applied = false; console.log(`${name}: NOT-APPLIED (${n} matches for ${JSON.stringify(find.slice(0, 60))})`); break; }
       text = text.replace(find, () => replace);
     }
     if (!applied) { bad++; continue; }

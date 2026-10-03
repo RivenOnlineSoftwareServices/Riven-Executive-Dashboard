@@ -23,15 +23,18 @@ The Glowming Summer Campaign 2026 for owners who work with their own Claude (bui
   posting calendar is compared cell by cell for its tracking links, `hooks/calendar-links.js`); a new
   file where new files are not allowed is removed. So a shell command is judged by what it DID, not
   by guessing from its text.
-- **A developer's checkout** (the session's folder is inside a git checkout that is neither a company
-  folder nor a campaign repository, nor a worktree of one): the blanket shell rules (no web requests,
-  no hidden code, no deep script chains, no claim text in shell writes) step aside, because a code
-  repository legitimately runs servers, local requests and build scripts. Everything that protects
-  the company files still applies there: file tools, connectors, deletes, and the copy post.js checks.
-  Owners working the campaign do so in the synced folders or the campaign repository, which never
-  count (Riaan, 2026-10-03).
-- Everywhere: a TypeScript type-only import (`import type … from "node:http"`) is not a web request,
-  and a regex's `.exec(` is not hidden code; a real import and a bare `exec(` / `eval(` still are.
+- **A developer's checkout** (the session was LAUNCHED inside a git checkout, read from
+  `CLAUDE_PROJECT_DIR`, that is neither a company folder nor a campaign repository nor a worktree of
+  one, and the shell is still inside it; never a checkout at the home folder or a drive root): the
+  blanket shell rules (no web requests, no hidden code, no deep or very large script chains, no claim
+  text in shell writes) step aside, because a code repository legitimately runs servers, local
+  requests and build scripts. Everything that protects the company files still applies there: file
+  tools, connectors, deletes, and the copy post.js checks. A campaign repository is known by its name,
+  its git remote, or a `.glowming-campaign` file at its root. Owners working the campaign launch in
+  the synced folders or the campaign repository, which never count (Riaan, 2026-10-03).
+- Everywhere: in a TypeScript script, a type-only import (`import type … from "node:http"`) is not a
+  web request; a regex's `pattern.exec(` is not hidden code. A real import, every `eval(`, a bare or
+  global `exec(`, and decoding a payload (`atob(`, a Buffer from base64, `new Function(`) still are.
 
 A second, content-only check (a prompt hook) reads the text AFTER it is written and only warns:
 secrets, and health claims Meta, TikTok or the ARB could reject. It never blocks; the owners
@@ -40,8 +43,12 @@ hooks/guard.test.js`; negative controls (each rule removed must turn a named cas
 hooks/guard.controls.mjs`.
 
 **Known limits:** a script that writes a company file it never names (a path built at run time) in a
-folder the command does not name either; in a developer's checkout, a company folder named only by a
-script more than three levels down; and the whole guard if Cowork does not run plugin hooks.
+folder the command does not name either; in a developer's checkout, nothing stops a web request
+(adverts, the shop, email), and a company file can be reached unseen through a script more than three
+levels down or over 500 KB, or through hidden code, when the command names no company folder (that
+mode exists for the owner's own code repositories); a campaign repository that neither its name, its
+remote nor a `.glowming-campaign` marker identifies; and the whole guard if Cowork does not run plugin
+hooks.
 The campaign skill checks that on first use and records it in `anton.md`. SharePoint version history
 is the undo for every file.
 

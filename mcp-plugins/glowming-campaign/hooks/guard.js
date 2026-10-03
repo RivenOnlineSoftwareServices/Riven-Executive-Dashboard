@@ -27,16 +27,20 @@
  * Everything else inside the company folders is read-only. Files outside them
  * (temporary working files) are allowed.
  *
- * A developer's checkout (a git working tree that is neither a company folder nor a campaign
- * repository, devCheckout): the blanket shell rules (no web requests, no hidden code, no deep
- * script chains, no claim text in shell writes) step aside there; everything that protects the
- * company files still applies.
+ * A developer's checkout (devCheckout: the session was LAUNCHED inside a git working tree that is
+ * neither a company folder nor a campaign repository, and the shell is still inside it): the blanket
+ * shell rules (no web requests, no hidden code, no deep or very large script chains, no claim text
+ * in shell writes) step aside there; everything that protects the company files still applies.
  *
  * Known limits (stated in the README): a script that builds company paths at run
  * time with no folder name in its text; a Python module run with -m; in a
- * developer's checkout, a company folder named only by a script more than three
- * levels down; anything if Cowork does not run plugin hooks at all (the skills'
- * own rules then apply, and the campaign skill runs a canary to find out).
+ * developer's checkout, nothing stops a web request (adverts, the shop, email), and a
+ * company file can be reached unseen through a script more than three levels down or
+ * over 500 KB, or through hidden code, when the command names no company folder;
+ * a campaign repository that neither its name, its remote nor a .glowming-campaign
+ * marker identifies counts as a developer's checkout; anything if Cowork does not run
+ * plugin hooks at all (the skills' own rules then apply, and the campaign skill runs
+ * a canary to find out).
  */
 'use strict';
 
@@ -253,12 +257,18 @@ const SHELL_SCRIPT = /\.(sh|bash|ps1|psm1|bat|cmd)$/i;
 // Shell redirection into a file: > >> 2> 2>> &> &>>, but not 2>&1. Judged on the COMMAND only
 // (scripts contain arrows and comparisons that are not redirects).
 const REDIRECT = /(^|[^=\-<>])(&|\d)?>{1,2}(?![&>=])/;
-// Code that hides what it runs: blocked everywhere, Anton never needs it. `eval(` and `exec(` are
-// the bare calls only: a member call such as a regex's `pattern.exec(text)` runs no code.
-const HIDDEN_CODE = /-e(nc|ncodedcommand)?\s+[a-z0-9+/=]{16,}|-encodedcommand|frombase64string|base64\s+(-d|--decode)|b64decode|(?<![.\w$])eval\(|(?<![.\w$])exec\(|\biex\b|invoke-expression|(^|[\s;&|])(python3?|py|node|ruby|perl)\s+-(\s|$)|(^|[\s;&|])(python3?|py|node)\s*<|\b(bash|sh|zsh)\s+-s\b|-command\s+-(\s|$)|(^|[\s;&|(])(bash|sh|zsh|dash|ksh|pwsh|powershell|cmd)(\.exe)?\s*<|\|\s*(bash|sh|zsh|dash|ksh|pwsh|powershell|cmd|python3?|py|node|ruby|perl|php)(\.exe)?(\s|$)/i;
+// Code that hides what it runs: blocked everywhere, Anton never needs it. Every `eval(` counts. A
+// bare `exec(` counts, and so does one reached through the builtins or the global object; a member
+// call on a name of its own (a regex's `pattern.exec(text)`) runs no code. Decoding a payload
+// (atob, a Buffer from base64, a new Function) counts too, whatever then runs it (Claude review
+// 2026-10-03).
+const HIDDEN_CODE = /-e(nc|ncodedcommand)?\s+[a-z0-9+/=]{16,}|-encodedcommand|frombase64string|base64\s+(-d|--decode)|b64decode|\beval\(|(?<![.\w$])exec\(|\b(?:builtins|__builtins__|globalThis|window|self|global)\s*\.\s*exec\(|\batob\(|\bfrom\s*\([^)]*,\s*['"]base64['"]|\bnew\s+Function\s*\(|\biex\b|invoke-expression|(^|[\s;&|])(python3?|py|node|ruby|perl)\s+-(\s|$)|(^|[\s;&|])(python3?|py|node)\s*<|\b(bash|sh|zsh)\s+-s\b|-command\s+-(\s|$)|(^|[\s;&|(])(bash|sh|zsh|dash|ksh|pwsh|powershell|cmd)(\.exe)?\s*<|\|\s*(bash|sh|zsh|dash|ksh|pwsh|powershell|cmd|python3?|py|node|ruby|perl|php)(\.exe)?(\s|$)/i;
 // A TypeScript type-only import or re-export (`import type { IncomingMessage } from "node:http"`) is
-// erased before the code runs: it names a module's types and makes no request, so NET_CALL ignores it.
-const TYPE_ONLY_IMPORT = /\b(?:import|export)\s+type\s+(?:\{[^}]*\}\s*|\*\s+as\s+[\w$]+\s+|[\w$]+\s+)from\s*(['"])[^'"\n]+\1/g;
+// erased before the code runs: it names a module's types and makes no request, so NET_CALL ignores it
+// in a TypeScript script's text (never in the command). The braces hold names and commas only, so the
+// pattern can never swallow a command or a call (Claude review 2026-10-03).
+const TYPE_ONLY_IMPORT = /\b(?:import|export)\s+type\s+(?:\{[\s\w$,]*\}\s*|\*\s+as\s+[\w$]+\s+|[\w$]+\s+)from\s*(['"])[^'"\s]+\1/g;
+const TS_SCRIPT = /\.(ts|mts|cts|tsx)$/i;
 const SCRIPT_FILE = /(?:"([^"]+\.(?:py|js|mjs|cjs|ts|ps1|psm1|sh|bash|bat|cmd|pl|rb|php))"|'([^']+\.(?:py|js|mjs|cjs|ts|ps1|psm1|sh|bash|bat|cmd|pl|rb|php))'|([^\s'"]+\.(?:py|js|mjs|cjs|ts|ps1|psm1|sh|bash|bat|cmd|pl|rb|php)))(?=$|[\s;&|)\],}])/gi;
 
 /**
@@ -268,6 +278,7 @@ const SCRIPT_FILE = /(?:"([^"]+\.(?:py|js|mjs|cjs|ts|ps1|psm1|sh|bash|bat|cmd|pl
  */
 function scriptsRun(cmd, cwd) {
   let text = '';
+  let netText = ''; // the same, with a TypeScript script's type-only imports taken out (for NET_CALL)
   let shellText = '';
   let unreadable = 0;
   let tooDeep = 0; // scripts the guard cannot fully read: more than three levels down, or over 500 KB
@@ -289,51 +300,87 @@ function scriptsRun(cmd, cwd) {
         if (body.length > 500000) { tooDeep++; continue; }
         const part = body;
         text += NL + part;
+        netText += NL + (TS_SCRIPT.test(file) ? part.replace(TYPE_ONLY_IMPORT, '') : part);
         if (SHELL_SCRIPT.test(file)) shellText += NL + part;
         next.push(part);
       }
     }
     frontier = next;
   }
-  return { text, shellText, unreadable, tooDeep };
+  return { text, netText, shellText, unreadable, tooDeep };
 }
 
-// A repository whose own path, or whose main checkout's path, says it is campaign work.
+// Campaign work: a repository whose path, main repository's path or remote says so, or one that
+// carries the marker file at its root (for a campaign repository named otherwise).
 const CAMPAIGN_REPO = /campaign/i;
+const CAMPAIGN_REMOTE = /^\s*url\s*=.*campaign/im;
+const CAMPAIGN_MARKER = '.glowming-campaign';
+
+/** The nearest folder at or above `dir` that holds a .git (a folder, or a linked worktree's file), or null. */
+function checkoutRoot(dir) {
+  let d = dir;
+  for (let i = 0; i < 64; i++) {
+    if (fs.existsSync(path.join(d, '.git'))) return d;
+    const parent = path.dirname(d);
+    if (parent === d) return null;
+    d = parent;
+  }
+  return null;
+}
 
 /**
- * Whether the session works in a developer's checkout: its folder is inside a git working tree that
- * is not a company folder and not a campaign repository (nor a worktree of one, wherever that
- * worktree lives). There the blanket shell rules below step aside: a code repository legitimately
- * starts servers, makes local requests, and runs test and build scripts that use eval/exec and
- * chain many files (measured 2026-10-03: they refused routine gates in a ROSS Suite session). The
- * company files stay protected everywhere: file tools, connectors, deletes and the copy that
- * post.js checks do not depend on this. Owners working the campaign do so in the synced company
- * folders or the campaign repository, neither of which counts (Riaan, 2026-10-03: "make it work
- * like we need it to without relying on me").
+ * Whether the git checkout at `root` is a developer's code repository: not a company folder, not a
+ * campaign repository, and readable as git. A linked worktree is judged by the repository it belongs
+ * to, wherever it lives. Anything that cannot be read as git fails closed (not a developer's checkout).
+ */
+function devRepository(root) {
+  if (isProtected(norm(root)) || CAMPAIGN_REPO.test(norm(root)) || fs.existsSync(path.join(root, CAMPAIGN_MARKER))) return false;
+  const dotGit = path.join(root, '.git');
+  let gitDir = dotGit;
+  let st = null;
+  try { st = fs.statSync(dotGit); } catch (e) { return false; }
+  if (st.isFile()) {
+    // A linked worktree: "gitdir: <main>/.git/worktrees/<name>", whose commondir names the main .git.
+    const link = /^gitdir:\s*(.+?)\s*$/m.exec(readText(dotGit) || '');
+    if (!link) return false;
+    gitDir = path.resolve(root, link[1]);
+    const common = readText(path.join(gitDir, 'commondir'));
+    if (common === null) return false;
+    gitDir = path.resolve(gitDir, common.trim());
+  } else if (!st.isDirectory()) {
+    return false;
+  }
+  gitDir = realLocation(gitDir, root);
+  const mainRoot = path.dirname(gitDir);
+  if (isProtected(norm(gitDir)) || CAMPAIGN_REPO.test(norm(gitDir)) || fs.existsSync(path.join(mainRoot, CAMPAIGN_MARKER))) return false;
+  const config = readText(path.join(gitDir, 'config'));
+  return config !== null && !CAMPAIGN_REMOTE.test(config);
+}
+
+/**
+ * Whether the session works in a developer's checkout. Decided from the folder the session was
+ * launched in (CLAUDE_PROJECT_DIR, set by Claude Code and fixed for the session; the hook's `cwd`
+ * follows every `cd`, so it alone could be steered into a fresh `git init`): that folder must be
+ * inside a developer's code repository (devRepository; never a checkout at the home folder or a
+ * drive root), and the shell must still be inside that same checkout. There the blanket shell rules
+ * below step aside: a code repository legitimately starts servers, makes local requests, and runs
+ * test and build scripts that use eval/exec and chain many files (measured 2026-10-03: they refused
+ * routine gates in a ROSS Suite session). The company files stay protected everywhere: file tools,
+ * connectors, deletes and the copy that post.js checks do not depend on this. Owners working the
+ * campaign launch in the synced company folders or the campaign repository, neither of which
+ * counts (Riaan, 2026-10-03: "make it work like we need it to without relying on me").
  */
 function devCheckout(cwd) {
-  const where = realLocation(cwd || process.cwd(), process.cwd());
+  const launched = process.env.CLAUDE_PROJECT_DIR;
+  if (!launched) return false; // without the launch folder, nothing shows the session is a code repository's
+  const project = realLocation(launched, process.cwd());
+  if (isProtected(norm(project))) return false;
+  const root = checkoutRoot(project);
+  if (!root || path.dirname(root) === root || norm(root) === norm(realLocation(os.homedir(), process.cwd()))) return false;
+  if (!devRepository(root)) return false;
+  const where = realLocation(cwd || launched, process.cwd());
   if (isProtected(norm(where))) return false;
-  let dir = where;
-  for (let i = 0; i < 64; i++) {
-    const dotGit = path.join(dir, '.git');
-    let st = null;
-    try { st = fs.statSync(dotGit); } catch (e) { st = null; }
-    if (st) {
-      if (isProtected(norm(dir)) || CAMPAIGN_REPO.test(norm(dir))) return false;
-      // A linked worktree's .git is a file naming its main repository ("gitdir: <main>/.git/worktrees/<name>").
-      if (st.isFile()) {
-        const link = readText(dotGit);
-        if (link === null || isProtected(norm(link)) || CAMPAIGN_REPO.test(norm(link))) return false;
-      }
-      return true;
-    }
-    const parent = path.dirname(dir);
-    if (parent === dir) return false;
-    dir = parent;
-  }
-  return false;
+  return (norm(where) + '/').startsWith(norm(root).replace(/\/?$/, '/'));
 }
 
 /** Decide one shell command, including the scripts it runs. */
@@ -366,7 +413,7 @@ function checkBash(input, cwd, callId) {
   const cmdNoDiscard = cmd.replace(discard, '');
   const shellNoDiscard = scripts.shellText.replace(discard, '');
   const redirects = REDIRECT.test(cmdNoDiscard) || REDIRECT.test(shellNoDiscard);
-  if (!dev && NET_CALL.test(full.replace(TYPE_ONLY_IMPORT, ''))) {
+  if (!dev && NET_CALL.test(cmd + scripts.netText)) {
     return 'Web requests from the shell or a script are not allowed from this Claude (adverts, the shop and email are never changed this way). Use a connector to read, or ask Riaan\'s side.';
   }
   // In a developer's checkout, claims are judged where they land: a company file (checkWrite, and
