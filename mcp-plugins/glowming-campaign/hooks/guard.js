@@ -323,12 +323,15 @@ const CAMPAIGN_MARKER = '.glowming-campaign';
  * (`setx` would carry one into the next session), not a file. With the launch folder fixed too, no
  * `git init` or `.git` written during a session (in the launch folder, above it or elsewhere) can
  * make a folder outside it count (Claude review 2026-10-03). Anton launches in the synced folders,
- * never there. `testRoots` is set only by the tests, in their own process.
+ * never there. It must be a real folder, never a link or junction (a junction made during a session
+ * at an absent C:\repos would otherwise lead it anywhere), and it is compared as written, never
+ * through links. `testRoots` is set only by the tests, in their own process.
  */
 let testRoots = null;
 function devRoots() {
-  return (testRoots || [path.join(path.parse(os.homedir()).root, 'repos')])
-    .map((r) => norm(realLocation(r, process.cwd())).replace(/\/?$/, '/'));
+  return (testRoots || [path.join(path.parse(os.homedir()).root, 'repos')]).filter((r) => {
+    try { const st = fs.lstatSync(r); return st.isDirectory() && !st.isSymbolicLink(); } catch (e) { return false; }
+  }).map((r) => norm(path.resolve(r)).replace(/\/?$/, '/'));
 }
 
 /** Whether `dir` is inside one of the dev roots (never the dev root itself). */
@@ -395,7 +398,8 @@ function devCheckout(cwd) {
   const launched = process.env.CLAUDE_PROJECT_DIR;
   if (!launched) return false; // without the launch folder, nothing shows the session is a code repository's
   const project = realLocation(launched, process.cwd());
-  if (isProtected(norm(project)) || !underDevRoot(project)) return false;
+  // Under the code folder both as written and as resolved: a junction at either end leads nowhere.
+  if (isProtected(norm(project)) || !underDevRoot(path.resolve(launched)) || !underDevRoot(project)) return false;
   const root = checkoutRoot(project);
   if (!root || !underDevRoot(root) || path.dirname(root) === root || norm(root) === norm(realLocation(os.homedir(), process.cwd()))) return false;
   if (!devRepository(root)) return false;

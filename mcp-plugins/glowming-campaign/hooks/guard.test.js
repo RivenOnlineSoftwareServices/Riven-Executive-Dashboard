@@ -529,14 +529,6 @@ launchedIn(path.join(annaHome, 'Desktop'), () => block('a .git written above the
   try { launchedIn(antonWork, () => block('a persisted GLOWMING_DEV_ROOTS naming Anton\'s folder changes nothing', web(antonWork))); }
   finally { delete process.env.GLOWMING_DEV_ROOTS; }
 }
-{
-  // The code folder itself is never the checkout (a .git at C:\repos).
-  gitRepo(repos);
-  const notes = path.join(repos, 'notes');
-  fs.mkdirSync(notes, { recursive: true });
-  try { launchedIn(notes, () => block('a .git at the code folder itself: a web request', web(notes))); }
-  finally { fs.rmSync(path.join(repos, '.git'), { recursive: true, force: true }); }
-}
 launchedIn(campRepo, () => block('campaign repository: a web request', web(campRepo)));
 launchedIn(path.join(campRepo, 'drafts'), () => block('campaign repository, a sub-folder: a web request', web(path.join(campRepo, 'drafts'))));
 launchedIn(campTree, () => {
@@ -556,6 +548,33 @@ launchedIn(companyCode, () => block('a git checkout inside a company folder: a w
   } finally {
     for (const [k, v] of Object.entries(was)) { if (v === undefined) delete process.env[k]; else process.env[k] = v; }
   }
+}
+{
+  // A junction made at an absent C:\repos, leading to Anton's folder, is not a code folder.
+  const reposLink = path.join(root, 'repos-link');
+  fs.symlinkSync(antonHome, reposLink, 'junction');
+  guard.setDevRootsForTests([reposLink]);
+  try {
+    launchedIn(antonWork, () => block('a junction as the code folder, leading to Anton\'s folder: a web request', web(antonWork)));
+    launchedIn(path.join(reposLink, 'Work'), () => block('a launch through that junction: a web request', web(path.join(reposLink, 'Work'))));
+  } finally { guard.setDevRootsForTests([repos]); }
+}
+{
+  // A launch folder that is a junction: from inside the code folder leading out, or from outside leading in.
+  const out = path.join(repos, 'jx');
+  fs.symlinkSync(antonWork, out, 'junction');
+  launchedIn(out, () => block('a launch folder in the code folder that is a junction leading out: a web request', web(out)));
+  const into = path.join(antonHome, 'to-repos');
+  fs.symlinkSync(devRepo, into, 'junction');
+  launchedIn(into, () => block('a launch folder outside the code folder that is a junction leading in: a web request', web(into)));
+}
+{
+  // The code folder itself is never the checkout (a .git at C:\repos).
+  gitRepo(repos);
+  const notes = path.join(repos, 'notes');
+  fs.mkdirSync(notes, { recursive: true });
+  try { launchedIn(notes, () => block('a .git at the code folder itself: a web request', web(notes))); }
+  finally { fs.rmSync(path.join(repos, '.git'), { recursive: true, force: true }); }
 }
 
 // ---- 6. Two false positives, fixed everywhere, and no new way past the rules (2026-10-03) ----------
