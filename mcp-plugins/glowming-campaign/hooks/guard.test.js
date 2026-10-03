@@ -520,6 +520,9 @@ launchedIn(devRepo, () => {
   const newNote = path.join(shared, 'work', 'anton', 'new.md');
   shell('dev: a script writes a new note with a detox claim into work/anton', devB('node scripts/note.js "' + newNote + '"'), () => fs.writeFileSync(newNote, 'A detox week.' + NL), 'undone',
     () => assert.ok(!fs.existsSync(newNote), 'the new note with the claim is removed'));
+  const newPy = path.join(shared, 'work', 'anton', 'new.py');
+  shell('dev: a script writes a new .py with a detox comment into work/anton (any text, not only notes)', devB('node scripts/note.js "' + newPy + '"'), () => fs.writeFileSync(newPy, '# detox' + NL), 'undone',
+    () => assert.ok(!fs.existsSync(newPy), 'the new .py with the claim is removed'));
   shell('dev: a script writes a plain new note into work/anton', devB('node scripts/note.js "' + newNote + '"'), () => fs.writeFileSync(newNote, 'Plain notes.' + NL), 'kept',
     () => { assert.ok(fs.existsSync(newNote), 'the plain new note stays'); fs.rmSync(newNote, { force: true }); });
 });
@@ -658,6 +661,17 @@ as(null, null, DELL, () => mode('no address and an unknown account', 'campaign')
 as(null, null, false, () => mode('the account lookup failed: never an error, never off', 'campaign'));
 as('  ', 'local-agent', false, () => mode('a blank address counts as none', 'campaign'));
 as('riaan@riven.co.za.evil.com', 'local-agent', DELL, () => mode('an address that only starts like Riaan\'s', 'full'));
+// The real lookup (Node's os module stood in for): case, ".local", and each lookup throwing (Codex code r2).
+{
+  const withOs = (o, why, expected) => as(null, 'cli', null, () => {
+    guard.setOsForTests(o);
+    try { mode(why, expected); } catch (e) { assert.fail(why + ': the lookup threw (' + e.message + ')'); } finally { guard.setOsForTests(null); }
+  });
+  withOs({ userInfo: () => ({ username: 'Riaan' }), hostname: () => 'ZENBOOKDUO-RV26' }, 'the Windows lookup in its own capitals', 'off');
+  withOs({ userInfo: () => ({ username: 'riaanventer' }), hostname: () => 'Riaans-MacBook-Air.local' }, 'the Mac lookup with .local', 'off');
+  withOs({ userInfo: () => { throw new Error('no account entry'); }, hostname: () => 'x' }, 'the account lookup throwing', 'campaign');
+  withOs({ userInfo: () => ({ username: 'riaan' }), hostname: () => { throw new Error('no name'); } }, 'the machine name lookup throwing', 'campaign');
+}
 
 // 7b. Off: nothing is judged, for every kind of call that the full guard refuses.
 const RIAAN_ID = () => guard.identity();
@@ -689,6 +703,13 @@ as(null, null, DELL, () => {
   assert.ok(post.run({ tool_name: 'Write', tool_input: { file_path: path.join(advertAlias, 'notes.txt'), content: 'token = abcdef123' }, tool_use_id: 'toolu_w' + (++callSeq), hook_event_name: 'PostToolUse', cwd: antonHome }, id).stdout.includes('password or secret'),
     'campaign: a write through a junction into a company folder is warned about'); passed++;
   fs.rmSync(path.join(advert, 'notes.txt'), { force: true });
+  // A bare name with no slash and no extension is a path too when it exists (Codex code r2).
+  const snapOf = (cid) => fs.existsSync(path.join(os.tmpdir(), 'glowming-snap-' + cid + '.json'));
+  assert.strictEqual(decide(B('cp scratch.txt adverts-link', antonHome), id), null, 'campaign: a copy into a junction named with no extension runs'); passed++;
+  assert.ok(snapOf(lastId), 'campaign: ... with its company folder copied first'); passed++;
+  verify();
+  assert.notStrictEqual(decide({ tool_name: 'mcp__filesystem__delete_file', tool_input: { path: '.' }, cwd: advert }, id), null, 'campaign: a connector delete of "." inside a company folder'); passed++;
+  assert.notStrictEqual(decide({ tool_name: 'mcp__filesystem__delete_file', tool_input: { path: 'adverts-link' }, cwd: antonHome }, id), null, 'campaign: a connector delete of a bare junction name'); passed++;
   const touchPy = path.join(antonHome, 'touch-' + process.pid + '.py');
   fs.writeFileSync(touchPy, 'open(r"' + files.riaan + '", "w").write("x")' + NL);
   assert.strictEqual(decide(B('python "' + touchPy + '"'), id), null, 'campaign: a script naming a company file is let run'); passed++;
@@ -702,6 +723,15 @@ as(null, null, DELL, () => {
   assert.strictEqual(decide(W(path.join(os.tmpdir(), 'draft.txt'), 'x'), id), null, 'campaign: a scratch file'); passed++;
   assert.notStrictEqual(decide(B('claude plugin disable glowming-campaign@riven-exec'), id), null, 'campaign: switching the plugin off'); passed++;
 });
+
+// Full mode: the same bare junction name gets the copy (Codex code r2).
+{
+  const alias2 = path.join(antonHome, 'adverts2');
+  fs.symlinkSync(advert, alias2, 'junction');
+  assert.strictEqual(decide(B('cp scratch.txt adverts2', antonHome)), null, 'full: a copy into a bare junction name runs'); passed++;
+  assert.ok(fs.existsSync(path.join(os.tmpdir(), 'glowming-snap-' + lastId + '.json')), 'full: ... with its company folder copied first'); passed++;
+  verify();
+}
 
 // 7d. The tamper list (FULL).
 const claudeDir = path.join(antonHome, '.claude');
@@ -891,6 +921,15 @@ assert.strictEqual(guard.decide(B('ls /tmp')), null, 'no call id: a command touc
   assert.strictEqual(post.run(ev({ file_path: scratch, content: 'order 4111 1111 1111 1112' }), full).stdout, '', 'a number that fails Luhn'); passed++;
   assert.ok(post.run(ev({ file_path: scratch, content: 'password = hunter22' }), full).stdout.includes('password'), 'a password written out'); passed++;
   assert.ok(post.run(ev({ file_path: scratch, content: 'password = abc' }), full).stdout.includes('password'), 'a short password written out (Codex code r1)'); passed++;
+  // Every warned shape and every file tool (Codex code r2). No output parses as no warning.
+  const safeJson = (s) => { try { return JSON.parse(s) || {}; } catch (e) { return {}; } };
+  const pk = '-----BEGIN ' + 'RSA PRIVATE KEY-----' + NL + 'MIIB' + NL;
+  const rpk = post.run(ev({ file_path: scratch, content: pk }), full);
+  assert.ok(rpk.code === 0 && (safeJson(rpk.stdout).systemMessage || "").includes('key or access token') && !rpk.stdout.includes('MIIB'), 'a private key block'); passed++;
+  const rme = post.run({ tool_name: 'MultiEdit', tool_input: { file_path: scratch, edits: [{ old_string: 'a', new_string: 'plain' }, { old_string: 'b', new_string: 'k ' + fakeKey }] }, tool_use_id: 'toolu_w' + (++callSeq), hook_event_name: 'PostToolUse' }, full);
+  assert.ok(rme.code === 0 && ((safeJson(rme.stdout).hookSpecificOutput || {}).additionalContext || "").includes('key or access token') && !rme.stdout.includes(fakeKey), 'a key in a MultiEdit'); passed++;
+  const rnb = post.run({ tool_name: 'NotebookEdit', tool_input: { notebook_path: scratch + '.ipynb', new_source: 'k = "' + fakeKey + '"' }, tool_use_id: 'toolu_w' + (++callSeq), hook_event_name: 'PostToolUse' }, full);
+  assert.ok(rnb.code === 0 && (safeJson(rnb.stdout).systemMessage || "").includes('key or access token') && !rnb.stdout.includes(fakeKey), 'a key in a NotebookEdit'); passed++;
   assert.ok(post.run({ tool_name: 'Edit', tool_input: { file_path: scratch, old_string: 'a', new_string: 'helps you lose weight' }, tool_use_id: 'toolu_w' + (++callSeq), hook_event_name: 'PostToolUse' }, full).stdout.includes('claim'), 'a banned claim in an Edit'); passed++;
   assert.strictEqual(post.run(ev({ file_path: scratch, content: 'Plain words, R1 299, 12 orders.' }), full).stdout, '', 'plain text, prices and figures'); passed++;
   assert.strictEqual(post.run({ tool_name: 'Bash', tool_input: { command: 'echo ' + fakeKey }, tool_use_id: 'toolu_w' + (++callSeq), hook_event_name: 'PostToolUse' }, full).stdout, '', 'shell output is not a file-tool write'); passed++;

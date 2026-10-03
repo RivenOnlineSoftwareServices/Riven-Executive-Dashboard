@@ -134,8 +134,13 @@ function checkFolder(dir, cwd, problems, recovery) {
     if (before.has(p)) continue;
     // A new text file is judged with what it actually says (a banned claim written by a script in a
     // developer's checkout, where the shell claim rule steps aside: Codex code r1).
+    // Any new file that reads as text (no NUL byte, up to 5 MB) is judged with its text, whatever its
+    // extension (.py, .svg ...): Codex code r2.
     let text = '';
-    if (guard.isTextFile(guard.norm(p))) { try { text = fs.readFileSync(p, 'utf8'); } catch (e) { text = ''; } }
+    try {
+      const buf = fs.readFileSync(p);
+      if (buf.length <= 5 * 1024 * 1024 && !buf.includes(0)) text = buf.toString('utf8');
+    } catch (e) { text = ''; }
     const reason = guard.checkNewFile(p, cwd, text);
     if (reason) {
       if (!keepDisplaced(p, recovery)) {

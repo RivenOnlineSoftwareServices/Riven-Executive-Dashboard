@@ -98,12 +98,23 @@ let testMachine = null;
 function machine() {
   if (testMachine === false) return null; // tests: the lookup failed
   if (testMachine) return testMachine;
+  const sys = testOs || os;
   try {
     return {
-      user: String(os.userInfo().username || '').toLowerCase(),
-      host: String(os.hostname() || '').toLowerCase().replace(/\.local$/, ''),
+      user: String(sys.userInfo().username || '').toLowerCase(),
+      host: String(sys.hostname() || '').toLowerCase().replace(/\.local$/, ''),
     };
   } catch (e) { return null; }
+}
+let testOs = null;
+
+/**
+ * Does a bare word in a command or a connector argument name something on disk from `cwd`? A
+ * folder or file with no slash and no extension (`adverts`, a junction) is a path too (Codex code r2).
+ */
+function existsFrom(piece, cwd) {
+  if (!piece || piece.length >= 1024 || /^-/.test(piece)) return false;
+  try { return fs.existsSync(path.resolve(cwd || process.cwd(), piece)); } catch (e) { return false; }
 }
 
 /**
@@ -587,7 +598,7 @@ function foldersNamed(full, cwd, inFolder) {
     if (!piece) continue;
     // A relative path is judged by where it LEADS from the session folder ("../../riaan.md"),
     // not by whether its own text names a company folder (Codex round 8).
-    const looksLikePath = /[\\/]/.test(piece) || /^\.\.?$/.test(piece) || /\.[a-z0-9]{1,5}$/i.test(piece);
+    const looksLikePath = /[\\/]/.test(piece) || /^\.\.?$/.test(piece) || /\.[a-z0-9]{1,5}$/i.test(piece) || existsFrom(piece, cwd);
     if (!isProtected(norm(piece)) && !(looksLikePath && piece.length < 1024 && isProtected(norm(realLocation(piece, cwd))))) continue;
     // Walk up from the named path to the nearest folder that exists: a file's folder, a glob's
     // folder, or the folder of a path followed by code.
@@ -700,7 +711,8 @@ function checkMcp(tool, input, cwd, mode) {
   const server = parts.length > 2 ? parts.slice(1, -1).join('__') : '';
   const act = parts[parts.length - 1];
   const strings = stringsIn(input, []);
-  const looksLikePath = (s) => /[\\/]/.test(s) || /\.[a-z0-9]{1,5}$/i.test(s);
+  // A bare name that exists from the session folder ('.', a junction) is a path too (Codex code r2).
+  const looksLikePath = (s) => /[\\/]/.test(s) || /\.[a-z0-9]{1,5}$/i.test(s) || existsFrom(s, cwd);
   const touches = () => strings.some((s) => isProtected(norm(s)) || (looksLikePath(s) && s.length < 1024 && isProtected(norm(realLocation(s, cwd)))));
   // CAMPAIGN (no identity): only a call whose arguments name or lead into a company folder is judged.
   if (mode === 'campaign' && !touches()) return null;
@@ -756,8 +768,10 @@ function decide(event, id) {
 function setDevRootsForTests(roots) { testRoots = roots; }
 /** Tests only: stand in for this machine's OS account and name ({ user, host }, lower-case); false = unreadable; null = the real one. */
 function setMachineForTests(m) { testMachine = m; }
+/** Tests only: stand in for Node's os module in the machine lookup ({ userInfo, hostname }), or null. */
+function setOsForTests(o) { testOs = o; }
 
-module.exports = { decide, identity, recordIdentity, checkWrite, checkNewFile, isTextFile, isProtected, realLocation, norm, sha1, walkFiles, snapId, CALENDAR, BANNED_CLAIMS, setDevRootsForTests, setMachineForTests };
+module.exports = { decide, identity, recordIdentity, checkWrite, checkNewFile, isTextFile, isProtected, realLocation, norm, sha1, walkFiles, snapId, CALENDAR, BANNED_CLAIMS, setDevRootsForTests, setMachineForTests, setOsForTests };
 
 if (require.main === module) {
   // Who is working is read BEFORE the tool call is parsed, so Riaan never meets even the
